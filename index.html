@@ -9,8 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg-top: #857463;
-    --bg-bottom: #6c5e4f;
+    --bg-top: #6399ac;
+    --bg-bottom: #3a697d;
     --fg: #ffffff;
     --muted: rgba(255, 255, 255, 0.62);
     --dim: rgba(255, 255, 255, 0.42);
@@ -188,9 +188,23 @@ stage.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.35;
+scene.environmentIntensity = 0.6;
 
-scene.background = new THREE.Color(0x7d6d5c);
+// Screen-space gradient matching the page background (a real background is
+// needed so the frosted transmission has something to refract).
+{
+  const css = getComputedStyle(document.documentElement);
+  const c = Object.assign(document.createElement('canvas'), { width: 2, height: 256 });
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, css.getPropertyValue('--bg-top').trim());
+  grad.addColorStop(1, css.getPropertyValue('--bg-bottom').trim());
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
+}
 
 const camera = new THREE.PerspectiveCamera(30, 1, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -199,84 +213,24 @@ controls.minDistance = 60;
 controls.maxDistance = 900;
 controls.maxPolarAngle = Math.PI * 0.495;
 
-// ---------------------------------------------------------------------------
-// Set: warm taupe wall + light oak tabletop, lit by a warm spot from the left.
-// The whole set turns with the camera's azimuth so every view is composed like
-// the lifestyle photo (wall behind, light from the left, grain running across).
-// ---------------------------------------------------------------------------
-const set = new THREE.Group();
-scene.add(set);
-
-function oakTexture() {
-  const w = 2048, h = 512;
-  const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(w, h);
-  const light = [208, 196, 178], dark = [184, 167, 145];
-  // cheap value noise for gentle colour drift between "boards"
-  const rnd = (i) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
-  for (let y = 0; y < h; y++) {
-    const drift = rnd(Math.floor(y / 37)) * 0.15;
-    for (let x = 0; x < w; x++) {
-      // wavy growth rings stretched along x (tileable in x: integer periods)
-      const t = (x / w) * Math.PI * 2;
-      const v = y + 7 * Math.sin(t * 3 + y * 0.013) + 3 * Math.sin(t * 11 + y * 0.05) + 1.5 * Math.sin(t * 29 + y * 0.2);
-      const ring = (v / 6.5) % 1;
-      const line = Math.pow(Math.max(0, 1 - Math.abs(ring - 0.5) * 6), 2) * 0.4;
-      const fibre = (Math.random() - 0.5) * 0.1;
-      const k = THREE.MathUtils.clamp(0.25 + drift + line + fibre, 0, 1);
-      const i = (y * w + x) * 4;
-      for (let ch = 0; ch < 3; ch++) img.data[i + ch] = light[ch] + (dark[ch] - light[ch]) * k;
-      img.data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return tex;
-}
-
-// tabletop (grain along x; one texture tile = 900 × 225 mm)
-const TABLE = 4000;
-const wood = oakTexture();
-wood.repeat.set(TABLE / 900, TABLE / 225);
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(TABLE, TABLE),
-  new THREE.MeshStandardMaterial({ map: wood, roughness: 0.62, envMapIntensity: 0.4 }),
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-set.add(floor);
-
-// back wall
-const WALL_DIST = 170;
-const wall = new THREE.Mesh(
-  new THREE.PlaneGeometry(TABLE, 2000),
-  new THREE.MeshStandardMaterial({ color: 0xa69582, roughness: 1, envMapIntensity: 0.3 }),
-);
-wall.position.set(0, 1000, -WALL_DIST);
-wall.receiveShadow = true;
-set.add(wall);
-
-// warm key spot from the upper left, soft-edged so it leaves a pool of light
-const key = new THREE.SpotLight(0xffeedd, 3.4, 0, 0.42, 0.9, 0);
-key.position.set(-320, 260, 140);
-key.target.position.set(10, 0, -20);
+const key = new THREE.DirectionalLight(0xffffff, 2.4);
+key.position.set(-40, 260, 60);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.near = 100;
-key.shadow.camera.far = 900;
-key.shadow.radius = 10;
-key.shadow.bias = -0.0003;
-set.add(key, key.target);
-// low warm bounce so shadows don't go black
-set.add(new THREE.HemisphereLight(0xf4ece2, 0x8f7a63, 0.45));
+Object.assign(key.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 50, far: 600 });
+key.shadow.radius = 14;
+key.shadow.blurSamples = 16;
+key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xdfefff, 0.6);
+fill.position.set(160, 80, -120);
+scene.add(fill);
 
-function updateSet() {
-  set.rotation.y = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
-}
+// invisible floor that only catches the shadow
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.ShadowMaterial({ opacity: 0.16 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
 
 // ---------------------------------------------------------------------------
 // Materials
@@ -979,7 +933,6 @@ function frame() {
     if (tween.t >= 1) tween = null;
   }
   controls.update();
-  updateSet();
   renderer.render(scene, camera);
   updateOverlay();
 }
