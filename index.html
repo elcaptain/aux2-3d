@@ -16,6 +16,10 @@
     --dim: rgba(255, 255, 255, 0.42);
     --rule: rgba(255, 255, 255, 0.26);
     --pad-x: clamp(24px, 8vw, 168px);
+    --blue: #0f62d0;
+    --blue-light: #5d9cf0;
+    --card-top: #2f3b4b;
+    --card-bottom: #3a404c;
   }
   html, body { margin: 0; height: 100%; }
   body {
@@ -30,53 +34,69 @@
   .intro, .features { z-index: 2; }
   #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   #leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-  #leaders .line { fill: none; stroke: #fff; stroke-width: 1.25; stroke-opacity: 0.34; stroke-linejoin: round; transition: stroke-opacity .25s; }
-  #leaders g.hover .line { stroke-opacity: 0.7; }
-  #leaders g.active .line { stroke-opacity: 0.95; stroke-width: 1.6; }
-  #leaders .dot { fill: #fff; }
-  #leaders .ring { fill: none; stroke: #fff; stroke-width: 1.5; opacity: 0; }
-  #leaders g.active .ring { animation: pulse 1.8s ease-out infinite; }
+  #leaders .line { fill: none; stroke: var(--blue); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+  #leaders .stem { stroke: var(--blue-light); stroke-width: 1.5; }
+  #leaders .pill rect { fill: var(--blue); }
+  #leaders .pill text { fill: #fff; font: 700 11.5px Figtree, system-ui, sans-serif; letter-spacing: 0.05em; }
+  #leaders .glow { fill: url(#glow); animation: breathe 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  #leaders .node { fill: #fff; stroke: var(--blue); stroke-width: 2.5; }
+  #leaders .dot { fill: #fff; transition: opacity .2s; }
   #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
-  @keyframes pulse { 0% { opacity: .9; r: 4px; } 100% { opacity: 0; r: 14px; } }
+  #leaders g:not(.active) :is(.line, .stem, .pill, .glow, .node) { display: none; }
+  #leaders g.active .dot { display: none; }
+  #leaders g.hover .dot { opacity: 1 !important; }
+  @keyframes breathe { 50% { transform: scale(1.12); opacity: 0.8; } }
 
   /* ---- intro ---- */
   .intro { position: fixed; top: clamp(28px, 10vh, 120px); left: var(--pad-x); max-width: min(640px, 52vw); pointer-events: none; }
   .intro h1 { margin: 0 0 0.4em; font-weight: 600; font-size: clamp(34px, 3.8vw, 64px); line-height: 1.05; letter-spacing: -0.03em; }
   .intro p { margin: 0; font-size: clamp(16px, 1.45vw, 22px); line-height: 1.4; color: var(--muted); }
 
-  /* ---- feature list ---- */
+  /* ---- feature cards ---- */
   .features {
-    position: fixed; right: clamp(24px, 6vw, 140px); top: clamp(140px, 26vh, 320px); bottom: 24px;
-    width: min(380px, 30vw); margin: 0; padding: 0; list-style: none;
-    overflow-y: auto; scrollbar-width: none; padding-bottom: 40px; box-sizing: border-box;
+    position: fixed; right: clamp(20px, 4vw, 96px); top: clamp(120px, 22vh, 280px); bottom: 0;
+    width: min(440px, 33vw); margin: 0; padding: 4px 4px 48px; list-style: none; box-sizing: border-box;
+    overflow-y: auto; scrollbar-width: none;
     -webkit-mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
     mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
   }
   .features::-webkit-scrollbar { display: none; }
-  .feature { margin-bottom: clamp(14px, 2.8vh, 30px); }
-  .feature-head {
-    all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer;
-    padding: 3px 0 3px 20px; border-left: 2px solid var(--rule); transition: border-color .2s;
+  .feature {
+    margin-bottom: 12px; border-radius: 22px; overflow: hidden;
+    background: linear-gradient(var(--card-top), var(--card-bottom));
+    box-shadow: inset 0 1.5px 0 rgba(93, 156, 240, 0.55), 0 8px 24px rgba(10, 30, 45, 0.18);
+    opacity: 0.78; transition: opacity .2s, box-shadow .2s;
   }
-  .feature-head:focus-visible { outline: 2px solid #fff; outline-offset: 4px; border-radius: 2px; }
-  .feature-title { display: block; font-weight: 600; font-size: clamp(18px, 1.55vw, 24px); line-height: 1.25; color: var(--dim); transition: color .2s; }
-  .feature-desc { display: block; margin-top: 6px; font-size: 15px; line-height: 1.5; color: var(--dim); transition: color .2s; }
-  .feature:hover .feature-title, .feature.hover .feature-title { color: rgba(255, 255, 255, 0.75); }
-  .feature.active .feature-head { border-left-color: #fff; }
-  .feature.active .feature-title { color: #fff; }
-  .feature.active .feature-desc { color: rgba(255, 255, 255, 0.9); }
+  .feature:hover, .feature.hover { opacity: 0.92; }
+  .feature.active {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1.5px var(--blue), inset 0 1.5px 0 var(--blue-light), 0 12px 32px rgba(10, 30, 45, 0.3);
+  }
+  .feature-head {
+    all: unset; box-sizing: border-box; width: 100%; cursor: pointer;
+    display: grid; grid-template-columns: 44px 1fr; gap: 16px; align-items: start;
+    padding: 20px 22px 20px 20px;
+  }
+  .feature-head:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 22px; }
+  .feature-icon {
+    width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box;
+    border: 1.5px solid #24569a; background: rgba(8, 24, 48, 0.35); color: #fff;
+  }
+  .feature.active .feature-icon { border-color: var(--blue-light); background: rgba(15, 98, 208, 0.25); }
+  .feature-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .feature-title { display: block; padding-top: 9px; font-weight: 500; font-size: clamp(18px, 1.5vw, 22px); line-height: 1.2; color: #fff; }
+  .feature-desc { display: block; margin-top: 8px; font-size: 15px; line-height: 1.45; color: rgba(255, 255, 255, 0.62); }
   .feature-specs { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s ease; }
   .feature.active .feature-specs { grid-template-rows: 1fr; }
   .feature-specs > div { overflow: hidden; }
   .feature-specs dl {
-    margin: 12px 0 2px 22px; padding: 12px 14px; display: grid; gap: 8px 14px;
-    grid-template-columns: minmax(84px, 36%) 1fr;
-    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px;
+    margin: 0 22px 20px 80px; padding-top: 14px; display: grid; gap: 8px 14px;
+    grid-template-columns: minmax(84px, 38%) 1fr; border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
   .feature-specs dl > div { display: contents; }
-  .feature-specs dt { font-size: 13px; line-height: 1.4; color: var(--muted); }
-  .feature-specs dd { margin: 0; font-size: 13.5px; line-height: 1.4; }
-  .feature-specs .note { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+  .feature-specs dt { font-size: 13px; line-height: 1.4; color: rgba(255, 255, 255, 0.5); }
+  .feature-specs dd { margin: 0; font-size: 13.5px; line-height: 1.4; color: rgba(255, 255, 255, 0.9); }
+  .feature-specs .note { grid-column: 1 / -1; font-size: 12.5px; color: rgba(255, 255, 255, 0.5); }
 
   /* ---- tools ---- */
   .tools { position: fixed; left: var(--pad-x); bottom: 22px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -97,8 +117,9 @@
     body { overflow: auto; }
     .intro { position: static; max-width: none; padding: 28px 16px 12px; }
     #stage { position: sticky; top: 0; height: max(300px, 46vh); z-index: 1; }
-    #leaders .line { display: none; }
+    #leaders .line, #leaders .node { display: none !important; }
     .features { position: static; width: auto; padding: 20px 16px 48px; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+    .feature-specs dl { margin-left: 22px; }
     .tools { position: absolute; left: 16px; bottom: 10px; }
     .tools .hint { display: none; }
   }
@@ -608,6 +629,17 @@ const FEATURES = [
   },
 ];
 
+const ICONS = {
+  audio: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10"/>',
+  sensors: '<path d="M14 14.5V5a2 2 0 0 0-4 0v9.5a4 4 0 1 0 4 0z"/><path d="M12 9v6.5"/>',
+  serial: '<rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7.5 10.5h.01M10.5 10.5h.01M13.5 10.5h.01M16.5 10.5h.01M9 13.5h.01M12 13.5h.01M15 13.5h.01" stroke-width="2.4"/>',
+  network: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8M7 7.8l4 8.4M17 7.8l-4 8.4"/>',
+  wireless: '<path d="M7 7l10 10-5 5V2l5 5L7 17"/>',
+  power: '<path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/>',
+};
+// short names for the pill labels at each port
+const PORT_LABELS = { audio: 'Audio', grove: 'Grove', port1: 'Port 1', port2: 'Port 2', usba: 'USB-A', radio: 'Wi-Fi · BT', usbc: 'USB-C', rj45: 'PoE' };
+
 // 3D anchor points (just proud of each port) + outward normals for visibility
 const ANCHORS = {};
 for (const p of PORTS) {
@@ -625,11 +657,27 @@ const SVG = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('leaders');
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
+svg.innerHTML = `<defs><radialGradient id="glow">
+  <stop offset="0" stop-color="#3b8cff" stop-opacity="0.9"/>
+  <stop offset="0.4" stop-color="#2f80ed" stop-opacity="0.5"/>
+  <stop offset="1" stop-color="#2f80ed" stop-opacity="0"/>
+</radialGradient></defs>`;
+const svgEl = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent?.append(e);
+  return e;
+};
+
 for (const f of FEATURES) {
   const li = el('li', 'feature');
   const head = el('button', 'feature-head');
   head.setAttribute('aria-expanded', 'false');
-  head.append(el('span', 'feature-title', f.title), el('span', 'feature-desc', f.desc));
+  const icon = el('span', 'feature-icon');
+  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[f.id]}</svg>`;
+  const text = el('span');
+  text.append(el('span', 'feature-title', f.title), el('span', 'feature-desc', f.desc));
+  head.append(icon, text);
   li.append(head);
   if (f.specs || f.note) {
     const wrap = el('div', 'feature-specs'), inner = el('div'), dl = el('dl');
@@ -646,23 +694,27 @@ for (const f of FEATURES) {
   li.addEventListener('mouseleave', () => setHover(f.id, false));
   list.append(li);
 
-  // leader line + one dot per anchor
-  const g = document.createElementNS(SVG, 'g');
-  const path = document.createElementNS(SVG, 'path');
-  path.setAttribute('class', 'line');
-  g.append(path);
-  f.dots = f.anchors.map(() => {
-    const ring = document.createElementNS(SVG, 'circle'); ring.setAttribute('class', 'ring'); ring.setAttribute('r', 4);
-    const dot = document.createElementNS(SVG, 'circle'); dot.setAttribute('class', 'dot'); dot.setAttribute('r', 3.5);
-    const hit = document.createElementNS(SVG, 'circle'); hit.setAttribute('class', 'hit'); hit.setAttribute('r', 14);
+  // per feature: glow + pill label + clickable dot at every port, one leader line, end node
+  const g = svgEl('g', {}, svg);
+  f.ports = f.anchors.map((id) => {
+    const glow = svgEl('circle', { class: 'glow', r: 58 }, g);
+    const stem = svgEl('line', { class: 'stem' }, g);
+    const pill = svgEl('g', { class: 'pill' }, g);
+    const rect = svgEl('rect', { height: 24, rx: 12 }, pill);
+    const label = svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 12 }, pill);
+    label.textContent = PORT_LABELS[id].toUpperCase();
+    const dot = svgEl('circle', { class: 'dot', r: 3.5 }, g);
+    const hit = svgEl('circle', { class: 'hit', r: 14 }, g);
     hit.addEventListener('click', () => select(f.id, true));
     hit.addEventListener('mouseenter', () => setHover(f.id, true));
     hit.addEventListener('mouseleave', () => setHover(f.id, false));
-    g.append(ring, dot, hit);
-    return { ring, dot, hit };
+    return { glow, stem, pill, rect, label, dot, hit, w: 0 };
   });
-  svg.append(g);
-  Object.assign(f, { li, head, g, path, title: f.title, titleEl: li.querySelector('.feature-title') });
+  const path = svgEl('path', { class: 'line' }, g);
+  // port nodes + card node sit on top of the line
+  f.nodes = f.anchors.map(() => svgEl('circle', { class: 'node', r: 3.5 }, g));
+  f.endNode = svgEl('circle', { class: 'node', r: 5 }, g);
+  Object.assign(f, { li, head, g, path, titleEl: li.querySelector('.feature-title') });
 }
 
 function setHover(id, on) {
@@ -768,70 +820,77 @@ for (const x of [-W / 2, W / 2]) for (const y of [0, BASE + H]) for (const z of 
 
 function updateOverlay() {
   const pts = BOX.map(toScreen);
-  const bbox = {
-    right: Math.max(...pts.map((p) => p.x)),
-    bottom: Math.max(...pts.map((p) => p.y)),
-  };
+  const bbox = { right: Math.max(...pts.map((p) => p.x)), bottom: Math.max(...pts.map((p) => p.y)) };
   const listRect = list.getBoundingClientRect();
   const listLeft = listRect.left - stageRect.left;
 
-  // project every anchor once
+  // dots for every port (click targets); full treatment only for the active feature
   const all = [];
+  let active = null;
   for (const f of FEATURES) {
     f.proj = f.anchors.map((id) => ({ ...toScreen(ANCHORS[id].pos), vis: facing(ANCHORS[id]) }));
+    const isActive = f.id === activeId;
+    if (isActive) active = f;
     f.proj.forEach((p, k) => {
-      const { ring, dot, hit } = f.dots[k];
-      for (const c of [ring, dot, hit]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
-      dot.setAttribute('opacity', p.vis * (f.id === activeId ? 1 : 0.75));
-      hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
-      ring.style.visibility = p.vis > 0.5 ? 'visible' : 'hidden';
+      const port = f.ports[k];
+      for (const c of [port.dot, port.hit, port.glow, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      port.dot.style.opacity = p.vis * 0.6;
+      port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
+      if (isActive) {
+        // pill label on a thin stem above the port; stagger neighbours so they don't overlap
+        if (!port.w) port.w = port.label.getComputedTextLength() + 26;
+        const h = 46 + (k % 2) * 34;
+        const top = p.y - h;
+        port.stem.setAttribute('x1', p.x); port.stem.setAttribute('x2', p.x);
+        port.stem.setAttribute('y1', p.y); port.stem.setAttribute('y2', top);
+        port.rect.setAttribute('width', port.w);
+        port.rect.setAttribute('x', -port.w / 2);
+        port.pill.setAttribute('transform', `translate(${p.x},${top - 24})`);
+        for (const e of [port.stem, port.pill, port.glow, f.nodes[k]]) e.style.opacity = p.vis;
+      }
       all.push(p);
     });
   }
+  if (!active) return;
+  const f = active;
+  f.path.removeAttribute('d');
+  f.endNode.style.opacity = 0;
   if (!isWide) return;
 
-  // first pass: start point + end point, decide route style
-  const elbowed = [];
-  for (const f of FEATURES) {
-    const vis = f.proj.filter((p) => p.vis > 0.02);
-    f.route = null;
-    f.path.style.opacity = vis.length ? Math.max(...vis.map((p) => p.vis)) : 0;
-    if (!vis.length) continue;
-    const head = f.head.getBoundingClientRect(), title = f.titleEl.getBoundingClientRect();
-    // item scrolled out of the list → no line
-    if (title.bottom < listRect.top || title.top > listRect.bottom) { f.path.style.opacity = 0; continue; }
-    const end = { x: head.left - stageRect.left, y: title.top + title.height / 2 - stageRect.top };
-    const itemBottom = head.bottom - stageRect.top - 6;
-    let d = '', start;
-    if (vis.length > 1) {
-      // several ports: short drops into a shared bus just below them
-      const busY = Math.max(...vis.map((p) => p.y)) + 16;
-      const xs = vis.map((p) => p.x);
-      for (const p of vis) d += `M${p.x},${p.y} L${p.x},${busY} `;
-      d += `M${Math.min(...xs)},${busY} L${Math.max(...xs)},${busY} `;
-      start = { x: Math.max(...xs), y: busY };
-    } else start = vis[0];
-    // item reaches below the model → drop straight down, then across
-    const lowY = Math.max(end.y, bbox.bottom + 18);
-    if (lowY <= itemBottom) {
-      f.route = { d, pts: [start, { x: start.x, y: lowY }, { x: end.x, y: lowY }] };
-    } else {
-      f.route = { d, start, end };
-      elbowed.push(f);
-    }
-  }
-  // second pass: stagger vertical elbows between the model and the list
-  elbowed.sort((a, b) => a.route.end.y - b.route.end.y);
-  const x0 = Math.min(bbox.right + 40, listLeft - 60), x1 = Math.max(x0, listLeft - 48);
-  elbowed.forEach((f, k) => {
-    const ex = elbowed.length === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * k / (elbowed.length - 1);
-    const { start, end } = f.route;
+  const vis = f.proj.filter((p) => p.vis > 0.02);
+  const head = f.head.getBoundingClientRect(), title = f.titleEl.getBoundingClientRect();
+  if (!vis.length || title.bottom < listRect.top || title.bottom > listRect.bottom - 48) return; // hidden or in the fade
+  const fade = Math.max(...vis.map((p) => p.vis));
+  const end = { x: head.left - stageRect.left, y: title.top + title.height / 2 - stageRect.top };
+  const itemBottom = head.bottom - stageRect.top - 10;
+
+  let d = '', start;
+  if (vis.length > 1) {
+    // several ports: drops into a shared bus just below them
+    const busY = Math.max(...vis.map((p) => p.y)) + 22;
+    const xs = vis.map((p) => p.x);
+    for (const p of vis) d += rounded([{ x: Math.max(...xs), y: busY }, { x: p.x, y: busY }, p], 12) + ' ';
+    start = { x: Math.max(...xs), y: busY };
+  } else start = vis[0];
+
+  let route;
+  const lowY = Math.max(end.y, bbox.bottom + 22);
+  if (lowY <= itemBottom) {
+    // card reaches below the model → drop straight down, then across
+    route = [start, { x: start.x, y: lowY }, { x: end.x, y: lowY }];
+    end.y = lowY;
+  } else {
+    const ex = Math.min(Math.max(bbox.right + 56, (start.x + end.x) / 2), end.x - 56);
     // nudge the first horizontal run down so it doesn't cut through another port
     let y = start.y;
-    for (let n = 0; n < 6 && all.some((q) => q.vis > 0.3 && q.x > start.x + 6 && q.x < ex && Math.abs(q.y - y) < 10); n++) y += 12;
-    f.route.pts = [start, { x: start.x, y }, { x: ex, y }, { x: ex, y: end.y }, end];
-  });
-  for (const f of FEATURES) if (f.route) f.path.setAttribute('d', f.route.d + rounded(f.route.pts));
+    for (let n = 0; n < 6 && all.some((q) => q.vis > 0.3 && q.x > start.x + 6 && q.x < ex && Math.abs(q.y - y) < 12); n++) y += 14;
+    route = [start, { x: start.x, y }, { x: ex, y }, { x: ex, y: end.y }, end];
+  }
+  f.path.setAttribute('d', d + rounded(route, 30));
+  f.path.style.opacity = fade;
+  f.endNode.setAttribute('cx', end.x);
+  f.endNode.setAttribute('cy', end.y);
+  f.endNode.style.opacity = fade;
 }
 
 // ---------------------------------------------------------------------------
