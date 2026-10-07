@@ -859,16 +859,18 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 function frame() {
   if (tween) {
     tween.t = Math.min(tween.t + 0.022, 1);
-    // interpolate on a sphere around the target so the camera arcs instead of cutting through
-    const a = tween.from.clone().sub(TARGET), b = tween.to.clone().sub(TARGET);
+    // turntable move: swing around the vertical axis (shortest way), easing height and distance
+    const a = new THREE.Spherical().setFromVector3(tween.from.clone().sub(TARGET));
+    const b = new THREE.Spherical().setFromVector3(tween.to.clone().sub(TARGET));
+    let dTheta = b.theta - a.theta;
+    dTheta = Math.atan2(Math.sin(dTheta), Math.cos(dTheta));
     const k = ease(tween.t);
-    const dir = a.clone().normalize().lerp(b.clone().normalize(), k);
-    // lift over the top only when swinging round to the opposite side
-    const opposite = THREE.MathUtils.clamp(-a.clone().normalize().dot(b.clone().normalize()), 0, 1);
-    dir.y += Math.sin(Math.PI * k) * 0.35 * opposite;
-    dir.normalize();
-    const len = THREE.MathUtils.lerp(a.length(), b.length(), k);
-    camera.position.copy(TARGET).addScaledVector(dir, len);
+    const sph = new THREE.Spherical(
+      THREE.MathUtils.lerp(a.radius, b.radius, k),
+      THREE.MathUtils.lerp(a.phi, b.phi, k),
+      a.theta + dTheta * k,
+    );
+    camera.position.setFromSpherical(sph).add(TARGET);
     if (tween.t >= 1) tween = null;
   }
   controls.update();
