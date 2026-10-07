@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AUX2 3D Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ui-bg: rgba(255, 255, 255, 0.78);
+    --ui-fg: #1d2a30;
+    --ui-muted: #5b6b72;
+    --ui-border: rgba(20, 40, 50, 0.12);
+    --ui-active: #1d2a30;
+    --ui-active-fg: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ui-bg: rgba(20, 28, 32, 0.78);
+      --ui-fg: #e8eef0;
+      --ui-muted: #9fb0b7;
+      --ui-border: rgba(255, 255, 255, 0.12);
+      --ui-active: #e8eef0;
+      --ui-active-fg: #12191c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ui-bg: rgba(20, 28, 32, 0.78);
+    --ui-fg: #e8eef0;
+    --ui-muted: #9fb0b7;
+    --ui-border: rgba(255, 255, 255, 0.12);
+    --ui-active: #e8eef0;
+    --ui-active-fg: #12191c;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #5b93a8; }
+  body { font-family: Figtree, system-ui, sans-serif; color: var(--ui-fg); }
+  canvas { display: block; touch-action: none; }
+  .panel {
+    position: fixed; left: 16px; right: 16px; bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    pointer-events: none;
+  }
+  .group {
+    display: flex; gap: 2px; padding: 3px; border-radius: 10px;
+    background: var(--ui-bg); border: 1px solid var(--ui-border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    pointer-events: auto;
+  }
+  button {
+    font: 500 13px/1 Figtree, system-ui, sans-serif; color: var(--ui-fg);
+    background: transparent; border: 0; border-radius: 7px; padding: 8px 11px; cursor: pointer;
+  }
+  button:hover { background: var(--ui-border); }
+  button[aria-pressed="true"] { background: var(--ui-active); color: var(--ui-active-fg); }
+  .title {
+    position: fixed; top: 16px; left: 16px; padding: 10px 14px; border-radius: 10px;
+    background: var(--ui-bg); border: 1px solid var(--ui-border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .title b { font-weight: 600; font-size: 15px; display: block; }
+  .title span { font-size: 12px; color: var(--ui-muted); }
+  #loading {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    font-size: 14px; color: #fff; letter-spacing: 0.02em;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.7/build/index.module.js",
+    "three-bvh-csg": "https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.18/build/index.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="loading">Building model…</div>
+<div class="title"><b>AUX2</b><span>100 × 64 × 24 mm · drag to orbit</span></div>
+<div class="panel">
+  <div class="group" id="views">
+    <button data-view="iso" aria-pressed="true">Iso</button>
+    <button data-view="front">Front</button>
+    <button data-view="back">Back</button>
+    <button data-view="top">Top</button>
+  </div>
+  <div class="group">
+    <button id="spin" aria-pressed="false">Rotate</button>
+    <button id="bg" aria-pressed="false">Light bg</button>
+    <button id="export">Export GLB</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+
+// ---------------------------------------------------------------------------
+// Dimensions (mm). Scale derived from the straight-on photo: RJ45 jack = 16 mm.
+// ---------------------------------------------------------------------------
+const W = 100;      // width  (x)
+const D = 64;       // depth  (z)
+const H = 24;       // shell height (y), excluding feet
+const R = 8.5;      // plan-view corner radius
+const EDGE = 1.4;   // top/bottom edge rounding
+const WALL = 1.6;   // shell wall thickness
+const CAP_INSET = 1.7;  // frosted rim around the white top
+const CAP_T = 2.0;      // white top thickness
+const FOOT_H = 1.2;
+const BASE = FOOT_H;    // shell bottom sits on the feet
+
+// ---------------------------------------------------------------------------
+// Renderer / scene
+// ---------------------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1, 5000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.minDistance = 60;
+controls.maxDistance = 900;
+controls.maxPolarAngle = Math.PI * 0.495;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.4);
+key.position.set(-90, 220, 140);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 50, far: 600 });
+key.shadow.radius = 6;
+key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xdfefff, 0.5);
+fill.position.set(160, 80, -120);
+scene.add(fill);
+
+const floorMat = new THREE.MeshStandardMaterial({ roughness: 1, envMapIntensity: 0.6 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const THEMES = {
+  studio: { bg: 0x3f7488, floor: 0x7fa9bc },
+  light:  { bg: 0xd9dadc, floor: 0xcfd0d2 },
+};
+function setTheme(name) {
+  const t = THEMES[name];
+  scene.background = new THREE.Color(t.bg);
+  scene.fog = new THREE.Fog(t.bg, 500, 1800);
+  floorMat.color.set(t.floor);
+  document.body.style.background = '#' + scene.background.getHexString();
+}
+setTheme('studio');
+
+// ---------------------------------------------------------------------------
+// Materials
+// ---------------------------------------------------------------------------
+const M = {
+  frosted: new THREE.MeshPhysicalMaterial({
+    color: 0xdfe6ee, roughness: 0.62, transmission: 0.85, thickness: 3, ior: 1.46,
+    attenuationColor: new THREE.Color(0xc9d6e2), attenuationDistance: 18,
+    clearcoat: 0.15, clearcoatRoughness: 0.5,
+  }),
+  cap: new THREE.MeshPhysicalMaterial({ color: 0xe4e4e2, roughness: 0.6 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0xc8ccd1, metalness: 1, roughness: 0.28 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xd8b56a, metalness: 1, roughness: 0.3 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.55 }),
+  void: new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 }),
+  green: new THREE.MeshStandardMaterial({ color: 0x7fd99c, roughness: 0.45 }),
+  grove: new THREE.MeshStandardMaterial({ color: 0xe8d9bb, roughness: 0.6 }),
+  ledY: new THREE.MeshStandardMaterial({ color: 0xffd23a, emissive: 0xffb300, emissiveIntensity: 0.6, roughness: 0.3 }),
+  ledG: new THREE.MeshStandardMaterial({ color: 0x7fe05a, emissive: 0x4bd12a, emissiveIntensity: 0.6, roughness: 0.3 }),
+  pcb: new THREE.MeshStandardMaterial({ color: 0x6f787f, roughness: 0.8 }),
+  internal: new THREE.MeshStandardMaterial({ color: 0x7d868d, roughness: 0.7 }),
+  foot: new THREE.MeshStandardMaterial({ color: 0xdfe5ea, roughness: 0.8, transparent: true, opacity: 0.9 }),
+  dot: new THREE.MeshBasicMaterial({ color: 0xf4f7f9 }),
+};
+
+// ---------------------------------------------------------------------------
+// Geometry helpers
+// ---------------------------------------------------------------------------
+function roundedRect(w, h, r, shape = new THREE.Shape()) {
+  const x = -w / 2, y = -h / 2;
+  r = Math.min(r, w / 2, h / 2);
+  shape.moveTo(x + r, y);
+  shape.lineTo(x + w - r, y);
+  shape.absarc(x + w - r, y + r, r, -Math.PI / 2, 0);
+  shape.lineTo(x + w, y + h - r);
+  shape.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2);
+  shape.lineTo(x + r, y + h);
+  shape.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
+  shape.lineTo(x, y + r);
+  shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
+  return shape;
+}
+const roundedRectPath = (w, h, r) => roundedRect(w, h, r, new THREE.Path());
+const stadium = (w, h, shape) => roundedRect(w, h, h / 2, shape);
+const circle = (r, shape = new THREE.Shape()) => { shape.absarc(0, 0, r, 0, Math.PI * 2); return shape; };
+
+// Rounded slab lying flat (plan = w × d), spanning y ∈ [0, h], with edge rounding e.
+function plateGeo(w, d, h, r, e = 0, segs = 8) {
+  const shape = roundedRect(w - 2 * e, d - 2 * e, Math.max(r - e, 0.01));
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: h - 2 * e, curveSegments: 24,
+    bevelEnabled: e > 0, bevelThickness: e, bevelSize: e, bevelSegments: segs,
+  });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, e, 0);
+  return g;
+}
+
+// Extrude a 2D profile (in the face plane) from z=z0 back to z=z0-depth.
+function prism(shape, depth, z0 = 0, curveSegments = 24) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments });
+  g.translate(0, 0, z0 - depth);
+  return g;
+}
+
+function mesh(geo, mat, { cast = false } = {}) {
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = cast;
+  return m;
+}
+
+// Face placement. `d` = mm from the left edge as seen looking at that face,
+// `fromTop` = mm down from the shell's top edge.
+function faceTransform(obj, face, d, fromTop, out = 0) {
+  const y = BASE + H - fromTop;
+  if (face === 'front') {
+    obj.position.set(-W / 2 + d, y, D / 2 + out);
+  } else {
+    obj.position.set(W / 2 - d, y, -D / 2 - out);
+    obj.rotation.y = Math.PI;
+  }
+  return obj;
+}
+
+// ---------------------------------------------------------------------------
+// Labels (canvas textures on thin planes)
+// ---------------------------------------------------------------------------
+const PX = 48; // canvas px per mm
+const FONT = '500 FPXpx Figtree, system-ui, sans-serif';
+const textMat = (tex) => new THREE.MeshBasicMaterial({
+  map: tex, transparent: true, depthWrite: false, toneMapped: false,
+  polygonOffset: true, polygonOffsetFactor: -2, color: 0xffffff,
+});
+
+// `lines`: array of strings. Text size is cap-ish height in mm.
+function makeLabel(lines, size = 2.1, { draw } = {}) {
+  const fpx = Math.round(size * PX);
+  const font = FONT.replace('FPX', fpx);
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  ctx.font = font;
+  const lineH = fpx * 1.22;
+  const widths = lines.map((l) => measureLine(ctx, l, fpx));
+  c.width = Math.ceil(Math.max(...widths) + fpx * 0.4);
+  c.height = Math.ceil(lineH * lines.length + fpx * 0.2);
+  ctx.font = font;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.textBaseline = 'middle';
+  lines.forEach((l, i) => drawLine(ctx, l, (c.width - widths[i]) / 2, lineH * (i + 0.5) + fpx * 0.1, fpx));
+  draw?.(ctx, c, fpx);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(c.width / PX, c.height / PX), textMat(tex));
+  m.renderOrder = 2;
+  return m;
+}
+// "⎓" (DC) is drawn by hand since most fonts lack it.
+const DC = '⎓';
+function measureLine(ctx, l, fpx) {
+  return l.split(DC).reduce((s, p, i) => s + ctx.measureText(p).width + (i ? fpx * 0.9 : 0), 0);
+}
+function drawLine(ctx, l, x, y, fpx) {
+  l.split(DC).forEach((part, i) => {
+    if (i) {
+      const w = fpx * 0.9, lw = fpx * 0.09;
+      ctx.fillRect(x, y - fpx * 0.12, w, lw);
+      for (let k = 0; k < 3; k++) ctx.fillRect(x + k * w / 3 + w * 0.03, y + fpx * 0.1, w / 3 - w * 0.12, lw);
+      x += w;
+    }
+    ctx.fillText(part, x, y);
+    x += ctx.measureText(part).width;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Connectors. Each builder returns { parts: Object3D (local, front plane at z=0,
+// extending into -z), hole: BufferGeometry to subtract from the shell }.
+// ---------------------------------------------------------------------------
+const RECESS = 0.5; // connectors sit slightly behind the outer surface
+const HOLE_DEPTH = WALL + 4;
+const holeFrom = (shape) => prism(shape, HOLE_DEPTH, 1);
+
+function rj45() {
+  const g = new THREE.Group();
+  const w = 16, h = 13;
+  const can = roundedRect(w, h, 0.4); can.holes.push(roundedRectPath(w - 0.8, h - 0.8, 0.2));
+  g.add(mesh(prism(can, 20, -RECESS), M.metal));
+  // black insert with plug opening (+ latch notch at the bottom)
+  const insert = roundedRect(w - 0.8, h - 0.8, 0.2);
+  const open = new THREE.Path();
+  open.moveTo(-5.85, -2.4); open.lineTo(-2.9, -2.4); open.lineTo(-2.9, -4.6); open.lineTo(2.9, -4.6);
+  open.lineTo(2.9, -2.4); open.lineTo(5.85, -2.4); open.lineTo(5.85, 5.0); open.lineTo(-5.85, 5.0); open.closePath();
+  insert.holes.push(open);
+  g.add(mesh(prism(insert, 18, -RECESS - 0.6), M.black));
+  const back = mesh(new THREE.PlaneGeometry(w, h), M.void); back.position.z = -16; g.add(back);
+  for (let i = 0; i < 8; i++) {
+    const pin = mesh(new THREE.BoxGeometry(0.45, 0.3, 6), M.gold);
+    pin.position.set(-3.15 + i * 0.9, 4.75, -9);
+    g.add(pin);
+  }
+  [[-5.1, M.ledY], [5.1, M.ledG]].forEach(([x, mat]) => {
+    const led = mesh(new THREE.BoxGeometry(2.2, 1.3, 0.4), mat);
+    led.position.set(x, -4.4, -RECESS - 0.5);
+    g.add(led);
+  });
+  return { parts: g, hole: holeFrom(roundedRect(w + 0.4, h + 0.4, 0.5)) };
+}
+
+function usbC() {
+  const g = new THREE.Group();
+  const shell = stadium(8.94, 3.26); shell.holes.push(stadium(8.34, 2.66, new THREE.Path()));
+  g.add(mesh(prism(shell, 7, -RECESS), M.metal));
+  const tongue = mesh(new THREE.BoxGeometry(6.6, 0.7, 5), M.black); tongue.position.z = -RECESS - 1.4 - 2.5; g.add(tongue);
+  const back = mesh(new THREE.PlaneGeometry(9, 3.4), M.void); back.position.z = -7; g.add(back);
+  return { parts: g, hole: holeFrom(stadium(9.7, 4.0)) };
+}
+
+function usbA() {
+  const g = new THREE.Group();
+  const shell = roundedRect(13.15, 5.8, 0.4); shell.holes.push(roundedRectPath(12.5, 5.12, 0.2));
+  g.add(mesh(prism(shell, 14, -RECESS), M.metal));
+  const tongue = mesh(new THREE.BoxGeometry(11, 1.9, 12), M.black); tongue.position.set(0, 1.3, -RECESS - 1.0 - 6); g.add(tongue);
+  for (let i = 0; i < 4; i++) {
+    const c = mesh(new THREE.BoxGeometry(1.0, 0.15, 6), M.gold);
+    c.position.set(-3.75 + i * 2.5, 0.3, -RECESS - 4);
+    g.add(c);
+  }
+  const back = mesh(new THREE.PlaneGeometry(13, 5.8), M.void); back.position.z = -13; g.add(back);
+  return { parts: g, hole: holeFrom(roundedRect(13.7, 6.4, 0.6)) };
+}
+
+function jack35(ringMat = M.black) {
+  const g = new THREE.Group();
+  const ring = circle(3.0); ring.holes.push(circle(1.75, new THREE.Path()));
+  g.add(mesh(prism(ring, 1.2, -RECESS), ringMat));
+  const body = circle(3.0); body.holes.push(circle(1.75, new THREE.Path()));
+  g.add(mesh(prism(body, 10, -RECESS - 1.2), M.black));
+  const back = mesh(new THREE.CircleGeometry(1.8, 24), M.void); back.position.z = -8; g.add(back);
+  return { parts: g, hole: holeFrom(circle(3.3)) };
+}
+
+function grove() {
+  const g = new THREE.Group();
+  const housing = roundedRect(9.6, 5.4, 0.3);
+  housing.holes.push(roundedRectPath(8.0, 2.4, 0.2));
+  g.add(mesh(prism(housing, 6, -RECESS - 0.3), M.grove));
+  const slot = mesh(new THREE.PlaneGeometry(8, 2.4), M.void); slot.position.z = -5.5; g.add(slot);
+  for (let i = 0; i < 4; i++) {
+    const p = mesh(new THREE.BoxGeometry(0.5, 0.5, 4), M.gold);
+    p.position.set(-3 + i * 2, 0, -5);
+    g.add(p);
+  }
+  const latch = mesh(new THREE.BoxGeometry(3.6, 1.0, 0.6), M.grove); latch.position.set(0, -2.2, -RECESS - 0.1); g.add(latch);
+  return { parts: g, hole: holeFrom(roundedRect(10.2, 6.0, 0.5)) };
+}
+
+function resetHole() {
+  const g = new THREE.Group();
+  const tube = circle(0.95); tube.holes.push(circle(0.75, new THREE.Path()));
+  g.add(mesh(prism(tube, 3, -0.2), M.void));
+  const back = mesh(new THREE.CircleGeometry(0.9, 20), M.void); back.position.z = -2.5; g.add(back);
+  return { parts: g, hole: holeFrom(circle(0.95)) };
+}
+
+// ---------------------------------------------------------------------------
+// Layout (measured from the photos)
+// ---------------------------------------------------------------------------
+const PORTS = [
+  // front: Reset · USB-C · RJ45
+  { face: 'front', d: 41.3, top: 14.1, make: resetHole, label: ['Reset'], lTop: 9.4 },
+  { face: 'front', d: 54.8, top: 16.3, make: usbC, label: ['USB-C', `5V ${DC} 2A`], lTop: 9.5 },
+  { face: 'front', d: 72.8, top: 12.2, make: rj45 },
+  { face: 'front', label: ['PoE', '802.3af'], d: 86.8, lTop: 9.9 },
+  // back: USB-A · RS-232 Port 1/2 · Grove · Audio
+  { face: 'back', d: 38.5, top: 13.6, make: usbA, label: ['USB-A'], lTop: 8.0 },
+  { face: 'back', d: 52.5, top: 13.6, make: () => jack35(), label: ['Port 1'], lTop: 8.4 },
+  { face: 'back', d: 63.5, top: 13.6, make: () => jack35(), label: ['Port 2'], lTop: 8.4 },
+  { face: 'back', d: 76.0, top: 14.2, make: grove, label: ['Grove Port'], lTop: 8.4 },
+  { face: 'back', d: 88.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
+];
+
+// ---------------------------------------------------------------------------
+// Build
+// ---------------------------------------------------------------------------
+async function build() {
+  await document.fonts.load('500 40px Figtree').catch(() => {});
+
+  const device = new THREE.Group();
+  device.name = 'AUX2';
+
+  // --- frosted shell via CSG ---
+  const ev = new Evaluator();
+  ev.attributes = ['position', 'normal'];
+  ev.useGroups = false;
+
+  const strip = (g) => { g.deleteAttribute('uv'); return g; };
+  let outerGeo = strip(plateGeo(W, D, H, R, EDGE, 8));
+  outerGeo = toCreasedNormals(outerGeo, Math.PI / 5);
+  let shell = new Brush(outerGeo);
+  shell.position.y = BASE;
+  shell.updateMatrixWorld();
+
+  const sub = (geo, setup) => {
+    const b = new Brush(strip(geo));
+    setup?.(b);
+    b.updateMatrixWorld();
+    shell = ev.evaluate(shell, b, SUBTRACTION);
+  };
+  // hollow interior
+  sub(plateGeo(W - 2 * WALL, D - 2 * WALL, H - WALL - CAP_T - 0.6, R - WALL), (b) => (b.position.y = BASE + WALL));
+  // recess for the white top
+  sub(plateGeo(W - 2 * CAP_INSET + 0.1, D - 2 * CAP_INSET + 0.1, CAP_T + 2, R - CAP_INSET), (b) => (b.position.y = BASE + H - CAP_T));
+
+  const internals = new THREE.Group();
+  for (const p of PORTS) {
+    if (!p.make) continue;
+    const { parts, hole } = p.make();
+    sub(hole, (b) => faceTransform(b, p.face, p.d, p.top));
+    internals.add(faceTransform(parts, p.face, p.d, p.top));
+  }
+
+  shell.material = M.frosted;
+  shell.castShadow = true;
+  shell.name = 'shell';
+  device.add(shell);
+
+  // --- white top ---
+  const cap = mesh(plateGeo(W - 2 * CAP_INSET, D - 2 * CAP_INSET, CAP_T, R - CAP_INSET, 0.35, 4), M.cap, { cast: true });
+  cap.position.y = BASE + H - CAP_T - 0.03;
+  cap.name = 'top';
+  device.add(cap);
+
+  // --- internals faintly visible through the frosted shell ---
+  const pcb = mesh(new THREE.BoxGeometry(W - 8, 1.6, D - 8), M.pcb);
+  pcb.position.y = BASE + 4.5;
+  internals.add(pcb);
+  const blocks = [
+    // [x, z, w, h, d] — rough component volumes
+    [-28, 18, 30, 9, 20],
+    [-30, -14, 26, 6, 22],
+    [5, 0, 18, 3, 18],
+  ];
+  for (const [x, z, w, h, d] of blocks) {
+    const b = mesh(new THREE.BoxGeometry(w, h, d), M.internal);
+    b.position.set(x, BASE + 5.3 + h / 2, z);
+    internals.add(b);
+  }
+  internals.name = 'internals';
+  device.add(internals);
+
+  // --- labels & indicator dots ---
+  const OUT = 0.03;
+  for (const p of PORTS) {
+    if (p.label) device.add(faceTransform(makeLabel(p.label), p.face, p.d, p.lTop, OUT));
+  }
+  // RS-232 heading spanning both serial ports, with rules either side
+  const rs = makeLabel(['RS-232']);
+  device.add(faceTransform(rs, 'back', 58, 5.0, OUT));
+  for (const [d0, d1] of [[47.3, 54.2], [61.8, 68.7]]) {
+    const rule = mesh(new THREE.PlaneGeometry(d1 - d0, 0.14), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, toneMapped: false }));
+    rule.renderOrder = 2;
+    device.add(faceTransform(rule, 'back', (d0 + d1) / 2, 4.6, OUT));
+  }
+  // small light-pipe dots below each connector
+  const dots = [
+    ['front', 41.3, 17.3], ['front', 50.9, 19.6], ['front', 65.6, 19.6],
+    ['back', 32.6, 18.0], ['back', 50.5, 18.2], ['back', 61.5, 18.2], ['back', 71.6, 18.6], ['back', 86.2, 18.6],
+  ];
+  for (const [face, d, t] of dots) {
+    device.add(faceTransform(mesh(new THREE.CircleGeometry(0.28, 16), M.dot), face, d, t, OUT));
+  }
+
+  // --- feet ---
+  const footGeo = new THREE.CylinderGeometry(2.6, 2.8, FOOT_H, 24);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const f = mesh(footGeo, M.foot);
+    f.position.set(sx * (W / 2 - 7), FOOT_H / 2, sz * (D / 2 - 7));
+    device.add(f);
+  }
+
+  scene.add(device);
+  document.getElementById('loading').remove();
+  return device;
+}
+
+// ---------------------------------------------------------------------------
+// Views, UI, loop
+// ---------------------------------------------------------------------------
+const TARGET = new THREE.Vector3(0, 11, 0);
+const VIEWS = {
+  iso:   new THREE.Vector3(-115, 120, 190),
+  front: new THREE.Vector3(0, 20, 245),
+  back:  new THREE.Vector3(0, 20, -245),
+  top:   new THREE.Vector3(0, 260, 0.01),
+};
+camera.position.copy(VIEWS.iso);
+controls.target.copy(TARGET);
+controls.update();
+
+let tween = null;
+function goTo(name) {
+  tween = { from: camera.position.clone(), to: VIEWS[name].clone(), t: 0 };
+  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === name));
+}
+document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => goTo(b.dataset.view)));
+controls.addEventListener('start', () => {
+  tween = null;
+  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+});
+
+const spinBtn = document.getElementById('spin');
+spinBtn.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  controls.autoRotateSpeed = 1.5;
+  spinBtn.setAttribute('aria-pressed', controls.autoRotate);
+});
+const bgBtn = document.getElementById('bg');
+bgBtn.addEventListener('click', () => {
+  const light = bgBtn.getAttribute('aria-pressed') !== 'true';
+  bgBtn.setAttribute('aria-pressed', light);
+  setTheme(light ? 'light' : 'studio');
+});
+
+let device;
+document.getElementById('export').addEventListener('click', async () => {
+  if (!device) return;
+  const glb = await new GLTFExporter().parseAsync(device, { binary: true });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+  a.download = 'aux2.glb';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+renderer.setAnimationLoop(() => {
+  if (tween) {
+    tween.t = Math.min(tween.t + 0.025, 1);
+    // interpolate on a sphere around the target so the camera arcs instead of cutting through
+    const a = tween.from.clone().sub(TARGET), b = tween.to.clone().sub(TARGET);
+    const k = ease(tween.t);
+    const dir = a.clone().normalize().lerp(b.clone().normalize(), k);
+    dir.y += Math.sin(Math.PI * k) * 0.35; // lift over the top when going front ↔ back
+    dir.normalize();
+    const len = THREE.MathUtils.lerp(a.length(), b.length(), k);
+    camera.position.copy(TARGET).addScaledVector(dir, len);
+    if (tween.t >= 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// handy for debugging from the console
+window.viewer = { scene, camera, controls, renderer, render: () => (controls.update(), renderer.render(scene, camera)) };
+
+build().then((d) => (device = d)).catch((e) => {
+  document.getElementById('loading').textContent = 'Failed to build model: ' + e.message;
+  console.error(e);
+});
+</script>
+</body>
+</html>
