@@ -40,8 +40,11 @@
   #leaders .pill text { fill: #fff; font: 700 11.5px Figtree, system-ui, sans-serif; letter-spacing: 0.05em; }
   #leaders .glow { fill: url(#glow); animation: breathe 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   #leaders .node { fill: #fff; stroke: var(--blue); stroke-width: 2.5; }
+  #leaders .dot { fill: #fff; transition: opacity .2s; }
   #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
   #leaders g:not(.active) :is(.line, .stem, .pill, .glow, .node) { display: none; }
+  #leaders g.active .dot { display: none; }
+  #leaders g.hover .dot { opacity: 1 !important; }
   @keyframes breathe { 50% { transform: scale(1.12); opacity: 0.8; } }
 
   /* ---- intro ---- */
@@ -684,7 +687,7 @@ for (const f of FEATURES) {
   li.addEventListener('mouseleave', () => setHover(f.id, false));
   list.append(li);
 
-  // per feature: glow + pill label + invisible click target at every port, one leader line, end node
+  // per feature: glow + pill label + clickable dot at every port, one leader line, end node
   const g = svgEl('g', {}, svg);
   f.ports = f.anchors.map((id) => {
     const glow = svgEl('circle', { class: 'glow', r: 58 }, g);
@@ -693,11 +696,12 @@ for (const f of FEATURES) {
     const rect = svgEl('rect', { height: 24, rx: 12 }, pill);
     const label = svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 12 }, pill);
     label.textContent = PORT_LABELS[id].toUpperCase();
+    const dot = svgEl('circle', { class: 'dot', r: 3.5 }, g);
     const hit = svgEl('circle', { class: 'hit', r: 14 }, g);
     hit.addEventListener('click', () => select(f.id, true));
     hit.addEventListener('mouseenter', () => setHover(f.id, true));
     hit.addEventListener('mouseleave', () => setHover(f.id, false));
-    return { glow, stem, pill, rect, label, hit, w: 0 };
+    return { glow, stem, pill, rect, label, dot, hit, w: 0 };
   });
   const path = svgEl('path', { class: 'line' }, g);
   // port nodes + card node sit on top of the line
@@ -822,7 +826,8 @@ function updateOverlay() {
     if (isActive) active = f;
     f.proj.forEach((p, k) => {
       const port = f.ports[k];
-      for (const c of [port.hit, port.glow, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      for (const c of [port.dot, port.hit, port.glow, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      port.dot.style.opacity = p.vis * 0.6;
       port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
       if (isActive) {
         // pill label on a thin stem above the port; stagger neighbours so they don't overlap
