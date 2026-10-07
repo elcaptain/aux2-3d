@@ -34,7 +34,18 @@
   .intro, .features { z-index: 2; }
   #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   #leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  #leaders .line { fill: none; stroke: var(--blue); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+  #leaders .stem { stroke: var(--blue-light); stroke-width: 1.5; }
+  #leaders .pill rect { fill: var(--blue); }
+  #leaders .pill text { fill: #fff; font: 700 11.5px Figtree, system-ui, sans-serif; letter-spacing: 0.05em; }
+  #leaders .glow { fill: url(#glow); animation: breathe 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  #leaders .node { fill: #fff; stroke: var(--blue); stroke-width: 2.5; }
+  #leaders .dot { fill: #fff; transition: opacity .2s; }
   #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
+  #leaders g:not(.active) :is(.line, .stem, .pill, .glow, .node) { display: none; }
+  #leaders g.active .dot { display: none; }
+  #leaders g.hover .dot { opacity: 1 !important; }
+  @keyframes breathe { 50% { transform: scale(1.12); opacity: 0.8; } }
 
   /* ---- intro ---- */
   .intro { position: fixed; top: clamp(28px, 10vh, 120px); left: var(--pad-x); max-width: min(640px, 52vw); pointer-events: none; }
@@ -106,6 +117,7 @@
     body { overflow: auto; }
     .intro { position: static; max-width: none; padding: 28px 16px 12px; }
     #stage { position: sticky; top: 0; height: max(300px, 46vh); z-index: 1; }
+    #leaders .line, #leaders .node { display: none !important; }
     .features { position: static; width: auto; padding: 20px 16px 48px; overflow: visible; -webkit-mask-image: none; mask-image: none; }
     .feature-specs dl { margin-left: 22px; }
     .tools { position: absolute; left: 16px; bottom: 10px; }
@@ -144,10 +156,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 
@@ -223,13 +231,6 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.Shad
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
-
-// bloom only catches the port glow: everything else stays below the threshold
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.5, 2.2);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
 
 // ---------------------------------------------------------------------------
 // Materials
@@ -473,33 +474,6 @@ const PORTS = [
   { id: 'audio', face: 'back', d: 88.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
 ];
 
-// Connector outlines (w, h, corner r) used for the light-pipe ring behind each port.
-const GLOW_SHAPES = {
-  reset: [1.9, 1.9, 0.95], usbc: [8.94, 3.26, 1.63], rj45: [16, 13, 0.4],
-  usba: [13.15, 5.8, 0.4], port1: [6, 6, 3], port2: [6, 6, 3], grove: [9.6, 5.4, 0.3], audio: [6, 6, 3],
-};
-const GLOW_COLOR = new THREE.Color(0x2f7bff);
-const GLOW_GAIN = 30;       // emissive strength at full glow (HDR, feeds the bloom)
-const LIGHT_MAX = 700;      // point-light intensity (candela, mm scene units)
-const GLOWS = {};           // id → { mat, light, level, target }
-
-// A glowing ring just inside the wall around the port + a point light behind it.
-function portGlow(id) {
-  const [w, h, r] = GLOW_SHAPES[id];
-  const g = new THREE.Group();
-  // inner edge sits outside the shell opening, so the light is only seen diffused through the plastic
-  const ring = roundedRect(w + 9, h + 9, r + 4.5);
-  ring.holes.push(roundedRectPath(w + 1.8, h + 1.8, r + 0.9));
-  const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3aa, roughness: 0.7, emissive: GLOW_COLOR, emissiveIntensity: 0 });
-  g.add(mesh(prism(ring, 0.3, -WALL - 0.05), mat));
-  const light = new THREE.PointLight(GLOW_COLOR, 0, 38, 2);
-  // just above the connector body (not inside its metal shell), close behind the wall
-  light.position.set(0, h / 2 + 3, -WALL - 2.5);
-  g.add(light);
-  GLOWS[id] = { mat, light, level: 0, target: 0 };
-  return g;
-}
-
 // ---------------------------------------------------------------------------
 // Build
 // ---------------------------------------------------------------------------
@@ -538,17 +512,6 @@ async function build() {
     const { parts, hole } = p.make();
     sub(hole, (b) => faceTransform(b, p.face, p.d, p.top));
     internals.add(faceTransform(parts, p.face, p.d, p.top));
-    if (GLOW_SHAPES[p.id]) internals.add(faceTransform(portGlow(p.id), p.face, p.d, p.top));
-  }
-  // radio: a glowing antenna strip inside the right-hand end, shining through the end wall
-  {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3aa, roughness: 0.7, emissive: GLOW_COLOR, emissiveIntensity: 0 });
-    const antenna = mesh(new THREE.BoxGeometry(0.6, 7, 18), mat);
-    antenna.position.set(W / 2 - WALL - 1.2, BASE + 12, -6);
-    const light = new THREE.PointLight(GLOW_COLOR, 0, 38, 2);
-    light.position.set(W / 2 - 10, BASE + 13, -6);
-    internals.add(antenna, light);
-    GLOWS.radio = { mat, light, level: 0, target: 0 };
   }
 
   shell.material = M.frosted;
@@ -694,6 +657,11 @@ const SVG = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('leaders');
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
+svg.innerHTML = `<defs><radialGradient id="glow">
+  <stop offset="0" stop-color="#3b8cff" stop-opacity="0.9"/>
+  <stop offset="0.4" stop-color="#2f80ed" stop-opacity="0.5"/>
+  <stop offset="1" stop-color="#2f80ed" stop-opacity="0"/>
+</radialGradient></defs>`;
 const svgEl = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -726,30 +694,33 @@ for (const f of FEATURES) {
   li.addEventListener('mouseleave', () => setHover(f.id, false));
   list.append(li);
 
-  // invisible click targets over each port
-  f.hits = f.anchors.map(() => {
-    const hit = svgEl('circle', { class: 'hit', r: 14 }, svg);
+  // per feature: glow + pill label + clickable dot at every port, one leader line, end node
+  const g = svgEl('g', {}, svg);
+  f.ports = f.anchors.map((id) => {
+    const glow = svgEl('circle', { class: 'glow', r: 58 }, g);
+    const stem = svgEl('line', { class: 'stem' }, g);
+    const pill = svgEl('g', { class: 'pill' }, g);
+    const rect = svgEl('rect', { height: 24, rx: 12 }, pill);
+    const label = svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 12 }, pill);
+    label.textContent = PORT_LABELS[id].toUpperCase();
+    const dot = svgEl('circle', { class: 'dot', r: 3.5 }, g);
+    const hit = svgEl('circle', { class: 'hit', r: 14 }, g);
     hit.addEventListener('click', () => select(f.id, true));
     hit.addEventListener('mouseenter', () => setHover(f.id, true));
     hit.addEventListener('mouseleave', () => setHover(f.id, false));
-    return hit;
+    return { glow, stem, pill, rect, label, dot, hit, w: 0 };
   });
-  Object.assign(f, { li, head });
+  const path = svgEl('path', { class: 'line' }, g);
+  // port nodes + card node sit on top of the line
+  f.nodes = f.anchors.map(() => svgEl('circle', { class: 'node', r: 3.5 }, g));
+  f.endNode = svgEl('circle', { class: 'node', r: 5 }, g);
+  Object.assign(f, { li, head, g, path, titleEl: li.querySelector('.feature-title') });
 }
 
-let hoverId = null;
 function setHover(id, on) {
-  FEATURES.find((x) => x.id === id).li.classList.toggle('hover', on);
-  hoverId = on ? id : hoverId === id ? null : hoverId;
-  updateGlowTargets();
-}
-
-// selected feature's ports glow fully, hovered ones get a preview
-function updateGlowTargets() {
-  for (const g of Object.values(GLOWS)) g.target = 0;
-  const set = (fid, v) => { for (const a of FEATURES.find((x) => x.id === fid)?.anchors || []) if (GLOWS[a]) GLOWS[a].target = Math.max(GLOWS[a].target, v); };
-  if (hoverId) set(hoverId, 0.4);
-  if (activeId) set(activeId, 1);
+  const f = FEATURES.find((x) => x.id === id);
+  f.li.classList.toggle('hover', on);
+  f.g.classList.toggle('hover', on);
 }
 
 let activeId = null;
@@ -758,15 +729,17 @@ function select(id, move) {
   for (const f of FEATURES) {
     const on = f.id === id;
     f.li.classList.toggle('active', on);
+    f.g.classList.toggle('active', on);
     f.head.setAttribute('aria-expanded', on);
+    if (on) svg.append(f.g); // draw the active line on top
   }
-  updateGlowTargets();
   if (move) {
     // only turn the device if this feature's ports aren't already facing the viewer
     const f = FEATURES.find((x) => x.id === id);
     if (!f.anchors.every((a) => facing(ANCHORS[a]) > 0.5)) goTo(f.view);
     // once the specs have expanded, make sure the whole item is visible in the list
-    if (isWide) setTimeout(() => f.li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 400);
+    const li = FEATURES.find((f) => f.id === id).li;
+    if (isWide) setTimeout(() => li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 400);
   }
 }
 
@@ -791,8 +764,6 @@ function resize() {
   stageRect = stage.getBoundingClientRect();
   const { width: w, height: h } = stageRect;
   renderer.setSize(w, h, false);
-  composer.setPixelRatio(renderer.getPixelRatio());
-  composer.setSize(w, h);
   camera.aspect = w / h;
   // shift the projection so the model sits left of centre, under the heading
   if (isWide) camera.setViewOffset(w, h, w * 0.17, -h * 0.08, w, h);
@@ -817,7 +788,8 @@ function goTo(name) {
 controls.addEventListener('start', () => (tween = null));
 
 // ---------------------------------------------------------------------------
-// Port click targets follow the projected anchors; glow levels ease to target.
+// Leader lines: project anchors to screen every frame and route orthogonal,
+// rounded lines to each list item.
 // ---------------------------------------------------------------------------
 const tmp = new THREE.Vector3();
 function toScreen(v) {
@@ -828,28 +800,97 @@ function facing(a) {
   tmp.copy(camera.position).sub(a.pos).normalize();
   return THREE.MathUtils.clamp((a.normal.dot(tmp) - 0.08) * 6, 0, 1);
 }
+// polyline → SVG path with rounded corners
+function rounded(pts, r = 14) {
+  pts = pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > 0.5);
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    const l1 = Math.hypot(b.x - a.x, b.y - a.y), l2 = Math.hypot(c.x - b.x, c.y - b.y);
+    const rr = Math.min(r, l1 / 2, l2 / 2);
+    const p1 = { x: b.x - (b.x - a.x) / l1 * rr, y: b.y - (b.y - a.y) / l1 * rr };
+    const p2 = { x: b.x + (c.x - b.x) / l2 * rr, y: b.y + (c.y - b.y) / l2 * rr };
+    d += ` L${p1.x},${p1.y} Q${b.x},${b.y} ${p2.x},${p2.y}`;
+  }
+  const z = pts[pts.length - 1];
+  return d + ` L${z.x},${z.y}`;
+}
+const BOX = [];
+for (const x of [-W / 2, W / 2]) for (const y of [0, BASE + H]) for (const z of [-D / 2, D / 2]) BOX.push(new THREE.Vector3(x, y, z));
 
 function updateOverlay() {
+  const pts = BOX.map(toScreen);
+  const bbox = { right: Math.max(...pts.map((p) => p.x)), bottom: Math.max(...pts.map((p) => p.y)) };
+  const listRect = list.getBoundingClientRect();
+  const listLeft = listRect.left - stageRect.left;
+
+  // dots for every port (click targets); full treatment only for the active feature
+  const all = [];
+  let active = null;
   for (const f of FEATURES) {
-    f.anchors.forEach((id, k) => {
-      const p = toScreen(ANCHORS[id].pos);
-      f.hits[k].setAttribute('cx', p.x);
-      f.hits[k].setAttribute('cy', p.y);
-      f.hits[k].style.pointerEvents = facing(ANCHORS[id]) > 0.5 ? 'auto' : 'none';
+    f.proj = f.anchors.map((id) => ({ ...toScreen(ANCHORS[id].pos), vis: facing(ANCHORS[id]) }));
+    const isActive = f.id === activeId;
+    if (isActive) active = f;
+    f.proj.forEach((p, k) => {
+      const port = f.ports[k];
+      for (const c of [port.dot, port.hit, port.glow, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      port.dot.style.opacity = p.vis * 0.6;
+      port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
+      if (isActive) {
+        // pill label on a thin stem above the port; stagger neighbours so they don't overlap
+        if (!port.w) port.w = port.label.getComputedTextLength() + 26;
+        const h = 46 + (k % 2) * 34;
+        const top = p.y - h;
+        port.stem.setAttribute('x1', p.x); port.stem.setAttribute('x2', p.x);
+        port.stem.setAttribute('y1', p.y); port.stem.setAttribute('y2', top);
+        port.rect.setAttribute('width', port.w);
+        port.rect.setAttribute('x', -port.w / 2);
+        port.pill.setAttribute('transform', `translate(${p.x},${top - 24})`);
+        for (const e of [port.stem, port.pill, port.glow, f.nodes[k]]) e.style.opacity = p.vis;
+      }
+      all.push(p);
     });
   }
-}
+  if (!active) return;
+  const f = active;
+  f.path.removeAttribute('d');
+  f.endNode.style.opacity = 0;
+  if (!isWide) return;
 
-const clock = new THREE.Clock();
-function updateGlows() {
-  const t = clock.getElapsedTime();
-  const breathe = 0.85 + 0.15 * Math.sin(t * 2.4);
-  for (const g of Object.values(GLOWS)) {
-    g.level += (g.target - g.level) * 0.08;
-    const l = g.level * (g.target === 1 ? breathe : 1);
-    g.mat.emissiveIntensity = l * GLOW_GAIN;
-    g.light.intensity = l * LIGHT_MAX;
+  const vis = f.proj.filter((p) => p.vis > 0.02);
+  const head = f.head.getBoundingClientRect(), title = f.titleEl.getBoundingClientRect();
+  if (!vis.length || title.bottom < listRect.top || title.bottom > listRect.bottom - 48) return; // hidden or in the fade
+  const fade = Math.max(...vis.map((p) => p.vis));
+  const end = { x: head.left - stageRect.left, y: title.top + title.height / 2 - stageRect.top };
+  const itemBottom = head.bottom - stageRect.top - 10;
+
+  let d = '', start;
+  if (vis.length > 1) {
+    // several ports: drops into a shared bus just below them
+    const busY = Math.max(...vis.map((p) => p.y)) + 22;
+    const xs = vis.map((p) => p.x);
+    for (const p of vis) d += rounded([{ x: Math.max(...xs), y: busY }, { x: p.x, y: busY }, p], 12) + ' ';
+    start = { x: Math.max(...xs), y: busY };
+  } else start = vis[0];
+
+  let route;
+  const lowY = Math.max(end.y, bbox.bottom + 22);
+  if (lowY <= itemBottom) {
+    // card reaches below the model → drop straight down, then across
+    route = [start, { x: start.x, y: lowY }, { x: end.x, y: lowY }];
+    end.y = lowY;
+  } else {
+    const ex = Math.min(Math.max(bbox.right + 56, (start.x + end.x) / 2), end.x - 56);
+    // nudge the first horizontal run down so it doesn't cut through another port
+    let y = start.y;
+    for (let n = 0; n < 6 && all.some((q) => q.vis > 0.3 && q.x > start.x + 6 && q.x < ex && Math.abs(q.y - y) < 12); n++) y += 14;
+    route = [start, { x: start.x, y }, { x: ex, y }, { x: ex, y: end.y }, end];
   }
+  f.path.setAttribute('d', d + rounded(route, 30));
+  f.path.style.opacity = fade;
+  f.endNode.setAttribute('cx', end.x);
+  f.endNode.setAttribute('cy', end.y);
+  f.endNode.style.opacity = fade;
 }
 
 // ---------------------------------------------------------------------------
@@ -892,14 +933,13 @@ function frame() {
     if (tween.t >= 1) tween = null;
   }
   controls.update();
-  updateGlows();
-  composer.render();
+  renderer.render(scene, camera);
   updateOverlay();
 }
 renderer.setAnimationLoop(frame);
 
 // handy for debugging from the console
-window.viewer = { scene, camera, controls, renderer, bloom, select, render: frame };
+window.viewer = { scene, camera, controls, renderer, select, render: frame };
 
 select(FEATURES[0].id, false);
 build().then((d) => (device = d)).catch((e) => {
