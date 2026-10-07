@@ -9,61 +9,98 @@
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --ui-bg: rgba(255, 255, 255, 0.78);
-    --ui-fg: #1d2a30;
-    --ui-muted: #5b6b72;
-    --ui-border: rgba(20, 40, 50, 0.12);
-    --ui-active: #1d2a30;
-    --ui-active-fg: #fff;
+    --bg-top: #6399ac;
+    --bg-bottom: #3a697d;
+    --fg: #ffffff;
+    --muted: rgba(255, 255, 255, 0.62);
+    --dim: rgba(255, 255, 255, 0.42);
+    --rule: rgba(255, 255, 255, 0.26);
+    --pad-x: clamp(24px, 8vw, 168px);
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --ui-bg: rgba(20, 28, 32, 0.78);
-      --ui-fg: #e8eef0;
-      --ui-muted: #9fb0b7;
-      --ui-border: rgba(255, 255, 255, 0.12);
-      --ui-active: #e8eef0;
-      --ui-active-fg: #12191c;
-    }
+  html, body { margin: 0; height: 100%; }
+  body {
+    overflow: hidden; color: var(--fg);
+    font-family: Figtree, system-ui, sans-serif;
+    background: linear-gradient(var(--bg-top), var(--bg-bottom)) fixed;
+    -webkit-font-smoothing: antialiased;
   }
-  :root[data-theme="dark"] {
-    --ui-bg: rgba(20, 28, 32, 0.78);
-    --ui-fg: #e8eef0;
-    --ui-muted: #9fb0b7;
-    --ui-border: rgba(255, 255, 255, 0.12);
-    --ui-active: #e8eef0;
-    --ui-active-fg: #12191c;
+
+  /* ---- 3D stage + leader lines ---- */
+  #stage { position: fixed; inset: 0; z-index: 0; }
+  .intro, .features { z-index: 2; }
+  #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  #leaders .line { fill: none; stroke: #fff; stroke-width: 1.25; stroke-opacity: 0.34; stroke-linejoin: round; transition: stroke-opacity .25s; }
+  #leaders g.hover .line { stroke-opacity: 0.7; }
+  #leaders g.active .line { stroke-opacity: 0.95; stroke-width: 1.6; }
+  #leaders .dot { fill: #fff; }
+  #leaders .ring { fill: none; stroke: #fff; stroke-width: 1.5; opacity: 0; }
+  #leaders g.active .ring { animation: pulse 1.8s ease-out infinite; }
+  #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
+  @keyframes pulse { 0% { opacity: .9; r: 4px; } 100% { opacity: 0; r: 14px; } }
+
+  /* ---- intro ---- */
+  .intro { position: fixed; top: clamp(28px, 10vh, 120px); left: var(--pad-x); max-width: min(640px, 52vw); pointer-events: none; }
+  .intro h1 { margin: 0 0 0.4em; font-weight: 600; font-size: clamp(34px, 3.8vw, 64px); line-height: 1.05; letter-spacing: -0.03em; }
+  .intro p { margin: 0; font-size: clamp(16px, 1.45vw, 22px); line-height: 1.4; color: var(--muted); }
+
+  /* ---- feature list ---- */
+  .features {
+    position: fixed; right: clamp(24px, 6vw, 140px); top: clamp(140px, 26vh, 320px); bottom: 24px;
+    width: min(380px, 30vw); margin: 0; padding: 0; list-style: none;
+    overflow-y: auto; scrollbar-width: none; padding-bottom: 40px; box-sizing: border-box;
+    -webkit-mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
   }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #5b93a8; }
-  body { font-family: Figtree, system-ui, sans-serif; color: var(--ui-fg); }
-  canvas { display: block; touch-action: none; }
-  .panel {
-    position: fixed; left: 16px; right: 16px; bottom: 16px;
-    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-    pointer-events: none;
+  .features::-webkit-scrollbar { display: none; }
+  .feature { margin-bottom: clamp(14px, 2.8vh, 30px); }
+  .feature-head {
+    all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer;
+    padding: 3px 0 3px 20px; border-left: 2px solid var(--rule); transition: border-color .2s;
   }
-  .group {
-    display: flex; gap: 2px; padding: 3px; border-radius: 10px;
-    background: var(--ui-bg); border: 1px solid var(--ui-border);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    pointer-events: auto;
+  .feature-head:focus-visible { outline: 2px solid #fff; outline-offset: 4px; border-radius: 2px; }
+  .feature-title { display: block; font-weight: 600; font-size: clamp(18px, 1.55vw, 24px); line-height: 1.25; color: var(--dim); transition: color .2s; }
+  .feature-desc { display: block; margin-top: 6px; font-size: 15px; line-height: 1.5; color: var(--dim); transition: color .2s; }
+  .feature:hover .feature-title, .feature.hover .feature-title { color: rgba(255, 255, 255, 0.75); }
+  .feature.active .feature-head { border-left-color: #fff; }
+  .feature.active .feature-title { color: #fff; }
+  .feature.active .feature-desc { color: rgba(255, 255, 255, 0.9); }
+  .feature-specs { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s ease; }
+  .feature.active .feature-specs { grid-template-rows: 1fr; }
+  .feature-specs > div { overflow: hidden; }
+  .feature-specs dl {
+    margin: 12px 0 2px 22px; padding: 12px 14px; display: grid; gap: 8px 14px;
+    grid-template-columns: minmax(84px, 36%) 1fr;
+    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px;
   }
-  button {
-    font: 500 13px/1 Figtree, system-ui, sans-serif; color: var(--ui-fg);
-    background: transparent; border: 0; border-radius: 7px; padding: 8px 11px; cursor: pointer;
+  .feature-specs dl > div { display: contents; }
+  .feature-specs dt { font-size: 13px; line-height: 1.4; color: var(--muted); }
+  .feature-specs dd { margin: 0; font-size: 13.5px; line-height: 1.4; }
+  .feature-specs .note { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+
+  /* ---- tools ---- */
+  .tools { position: fixed; left: var(--pad-x); bottom: 22px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .tools button {
+    font: 500 13px/1 Figtree, system-ui, sans-serif; color: #fff; cursor: pointer;
+    background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px; padding: 8px 13px;
   }
-  button:hover { background: var(--ui-border); }
-  button[aria-pressed="true"] { background: var(--ui-active); color: var(--ui-active-fg); }
-  .title {
-    position: fixed; top: 16px; left: 16px; padding: 10px 14px; border-radius: 10px;
-    background: var(--ui-bg); border: 1px solid var(--ui-border);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  }
-  .title b { font-weight: 600; font-size: 15px; display: block; }
-  .title span { font-size: 12px; color: var(--ui-muted); }
-  #loading {
-    position: fixed; inset: 0; display: grid; place-items: center;
-    font-size: 14px; color: #fff; letter-spacing: 0.02em;
+  .tools button:hover { background: rgba(255, 255, 255, 0.2); }
+  .tools button[aria-pressed="true"] { background: #fff; color: #2f5d70; }
+  .tools .hint { font-size: 12.5px; color: var(--muted); margin-left: 6px; }
+
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 14px; color: #fff; }
+
+  /* ---- small screens: intro, sticky model, list below; dots instead of leader lines ---- */
+  @media (max-width: 899px) {
+    html, body { height: auto; }
+    body { overflow: auto; }
+    .intro { position: static; max-width: none; padding: 28px 16px 12px; }
+    #stage { position: sticky; top: 0; height: max(300px, 46vh); z-index: 1; }
+    #leaders .line { display: none; }
+    .features { position: static; width: auto; padding: 20px 16px 48px; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+    .tools { position: absolute; left: 16px; bottom: 10px; }
+    .tools .hint { display: none; }
   }
 </style>
 <script type="importmap">
@@ -78,21 +115,20 @@
 </script>
 </head>
 <body>
-<div id="loading">Building model…</div>
-<div class="title"><b>AUX2</b><span>100 × 64 × 24 mm · drag to orbit</span></div>
-<div class="panel">
-  <div class="group" id="views">
-    <button data-view="iso" aria-pressed="true">Iso</button>
-    <button data-view="front">Front</button>
-    <button data-view="back">Back</button>
-    <button data-view="top">Top</button>
-  </div>
-  <div class="group">
+<header class="intro">
+  <h1>Connect everything</h1>
+  <p>Stream audio, control legacy devices over RS-232, add sensors and extend your Zigbee or Z-Wave network, all from one small box.</p>
+</header>
+<div id="stage">
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div class="tools">
     <button id="spin" aria-pressed="false">Rotate</button>
-    <button id="bg" aria-pressed="false">Light bg</button>
     <button id="export">Export GLB</button>
+    <span class="hint">Drag to rotate · scroll to zoom</span>
   </div>
 </div>
+<ol class="features" id="features" aria-label="Ports and capabilities"></ol>
+<div id="loading">Building model…</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -119,21 +155,37 @@ const BASE = FOOT_H;    // shell bottom sits on the feet
 // ---------------------------------------------------------------------------
 // Renderer / scene
 // ---------------------------------------------------------------------------
+const stage = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 0.9;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
+renderer.shadowMap.type = THREE.PCFShadowMap;
+stage.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.55;
+scene.environmentIntensity = 0.6;
 
-const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1, 5000);
+// Screen-space gradient matching the page background (a real background is
+// needed so the frosted transmission has something to refract).
+{
+  const css = getComputedStyle(document.documentElement);
+  const c = Object.assign(document.createElement('canvas'), { width: 2, height: 256 });
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, css.getPropertyValue('--bg-top').trim());
+  grad.addColorStop(1, css.getPropertyValue('--bg-bottom').trim());
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
+}
+
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.minDistance = 60;
@@ -141,35 +193,23 @@ controls.maxDistance = 900;
 controls.maxPolarAngle = Math.PI * 0.495;
 
 const key = new THREE.DirectionalLight(0xffffff, 2.4);
-key.position.set(-90, 220, 140);
+key.position.set(-40, 260, 60);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 Object.assign(key.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 50, far: 600 });
-key.shadow.radius = 6;
+key.shadow.radius = 14;
+key.shadow.blurSamples = 16;
 key.shadow.bias = -0.0004;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xdfefff, 0.5);
+const fill = new THREE.DirectionalLight(0xdfefff, 0.6);
 fill.position.set(160, 80, -120);
 scene.add(fill);
 
-const floorMat = new THREE.MeshStandardMaterial({ roughness: 1, envMapIntensity: 0.6 });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), floorMat);
+// invisible floor that only catches the shadow
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.ShadowMaterial({ opacity: 0.16 }));
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
-
-const THEMES = {
-  studio: { bg: 0x3f7488, floor: 0x7fa9bc },
-  light:  { bg: 0xd9dadc, floor: 0xcfd0d2 },
-};
-function setTheme(name) {
-  const t = THEMES[name];
-  scene.background = new THREE.Color(t.bg);
-  scene.fog = new THREE.Fog(t.bg, 500, 1800);
-  floorMat.color.set(t.floor);
-  document.body.style.background = '#' + scene.background.getHexString();
-}
-setTheme('studio');
 
 // ---------------------------------------------------------------------------
 // Materials
@@ -401,16 +441,16 @@ function resetHole() {
 // ---------------------------------------------------------------------------
 const PORTS = [
   // front: Reset · USB-C · RJ45
-  { face: 'front', d: 41.3, top: 14.1, make: resetHole, label: ['Reset'], lTop: 9.4 },
-  { face: 'front', d: 54.8, top: 16.3, make: usbC, label: ['USB-C', `5V ${DC} 2A`], lTop: 9.5 },
-  { face: 'front', d: 72.8, top: 12.2, make: rj45 },
+  { id: 'reset', face: 'front', d: 41.3, top: 14.1, make: resetHole, label: ['Reset'], lTop: 9.4 },
+  { id: 'usbc', face: 'front', d: 54.8, top: 16.3, make: usbC, label: ['USB-C', `5V ${DC} 2A`], lTop: 9.5 },
+  { id: 'rj45', face: 'front', d: 72.8, top: 12.2, make: rj45 },
   { face: 'front', label: ['PoE', '802.3af'], d: 86.8, lTop: 9.9 },
   // back: USB-A · RS-232 Port 1/2 · Grove · Audio
-  { face: 'back', d: 38.5, top: 13.6, make: usbA, label: ['USB-A'], lTop: 8.0 },
-  { face: 'back', d: 52.5, top: 13.6, make: () => jack35(), label: ['Port 1'], lTop: 8.4 },
-  { face: 'back', d: 63.5, top: 13.6, make: () => jack35(), label: ['Port 2'], lTop: 8.4 },
-  { face: 'back', d: 76.0, top: 14.2, make: grove, label: ['Grove Port'], lTop: 8.4 },
-  { face: 'back', d: 88.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
+  { id: 'usba', face: 'back', d: 38.5, top: 13.6, make: usbA, label: ['USB-A'], lTop: 8.0 },
+  { id: 'port1', face: 'back', d: 52.5, top: 13.6, make: () => jack35(), label: ['Port 1'], lTop: 8.4 },
+  { id: 'port2', face: 'back', d: 63.5, top: 13.6, make: () => jack35(), label: ['Port 2'], lTop: 8.4 },
+  { id: 'grove', face: 'back', d: 76.0, top: 14.2, make: grove, label: ['Grove Port'], lTop: 8.4 },
+  { id: 'audio', face: 'back', d: 88.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -518,44 +558,288 @@ async function build() {
 }
 
 // ---------------------------------------------------------------------------
-// Views, UI, loop
+// Features: copy, specs, which ports they point at, and the camera view
+// ---------------------------------------------------------------------------
+const FEATURES = [
+  {
+    id: 'audio', title: 'Stream audio', anchors: ['audio'], view: 'back',
+    desc: 'Analogue and digital audio through one 3.5 mm jack, with optical S/PDIF built in.',
+    specs: [
+      ['DAC', 'TI PCM5122'],
+      ['Analogue', '24-bit / 48 kHz stereo, 100 dB SNR'],
+      ['Digital', '24-bit / 48 kHz stereo PCM, lossless (S/PDIF)'],
+      ['Codecs', 'FLAC, MP3 and WAV'],
+      ['Home Assistant', 'Announcements, radio, URL streams and files from your media library'],
+      ['Whole-home audio', 'Synchronized playback with Music Assistant via Sendspin'],
+    ],
+  },
+  {
+    id: 'sensors', title: 'Connect sensors', anchors: ['grove'], view: 'back',
+    desc: 'Plug in sensors easily via the Grove port.',
+  },
+  {
+    id: 'serial', title: 'Serial ports', anchors: ['port1', 'port2'], view: 'back',
+    desc: 'Control older devices like TVs, amplifiers and projectors over RS-232.',
+    specs: [
+      ['Connector', '2 × 3.5 mm RS-232'],
+      ['TX / RX switches', 'Swap the transmit and receive lines on each port for extra compatibility'],
+      ['Works with', 'Consumer and pro AV equipment, TVs, UPSs, climate controllers'],
+    ],
+    note: 'Some devices need a converter cable (DB9, RJ9, RJ44, Mini-DIN).',
+  },
+  {
+    id: 'network', title: 'Extend your network', anchors: ['usba'], view: 'back',
+    desc: 'Connect your ZBT-2 or ZWA-2 and place it in the optimal location for better coverage.',
+    specs: [['USB-A', 'Data, for Connect ZBT-1, ZBT-2 and ZWA-2']],
+  },
+  {
+    id: 'wireless', title: 'Wi-Fi & Bluetooth', anchors: ['radio'], view: 'top',
+    desc: 'Connect your Bluetooth devices to Home Assistant.',
+    specs: [['SoC', 'ESP32-S3'], ['Wireless', 'Wi-Fi and Bluetooth']],
+  },
+  {
+    id: 'power', title: 'Power & Ethernet', anchors: ['usbc', 'rj45'], view: 'front',
+    desc: 'A single cable with Power-over-Ethernet, or power over USB-C.',
+    specs: [
+      ['USB-C', '5 V DC, 2 A or higher'],
+      ['Power-over-Ethernet', 'IEEE 802.3af'],
+      ['Ethernet without PoE', 'Requires USB-C power'],
+    ],
+  },
+];
+
+// 3D anchor points (just proud of each port) + outward normals for visibility
+const ANCHORS = {};
+for (const p of PORTS) {
+  if (!p.id) continue;
+  const o = faceTransform(new THREE.Object3D(), p.face, p.d, p.top, 0.4);
+  ANCHORS[p.id] = { pos: o.position.clone(), normal: new THREE.Vector3(0, 0, p.face === 'front' ? 1 : -1) };
+}
+ANCHORS.radio = { pos: new THREE.Vector3(28, BASE + H + 0.05, -6), normal: new THREE.Vector3(0, 1, 0) };
+
+// ---------------------------------------------------------------------------
+// Feature list (DOM)
+// ---------------------------------------------------------------------------
+const list = document.getElementById('features');
+const SVG = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('leaders');
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+for (const f of FEATURES) {
+  const li = el('li', 'feature');
+  const head = el('button', 'feature-head');
+  head.setAttribute('aria-expanded', 'false');
+  head.append(el('span', 'feature-title', f.title), el('span', 'feature-desc', f.desc));
+  li.append(head);
+  if (f.specs || f.note) {
+    const wrap = el('div', 'feature-specs'), inner = el('div'), dl = el('dl');
+    for (const [k, v] of f.specs || []) {
+      const row = el('div');
+      row.append(el('dt', '', k), el('dd', '', v));
+      dl.append(row);
+    }
+    if (f.note) dl.append(el('dd', 'note', f.note));
+    inner.append(dl); wrap.append(inner); li.append(wrap);
+  }
+  head.addEventListener('click', () => select(f.id, true));
+  li.addEventListener('mouseenter', () => setHover(f.id, true));
+  li.addEventListener('mouseleave', () => setHover(f.id, false));
+  list.append(li);
+
+  // leader line + one dot per anchor
+  const g = document.createElementNS(SVG, 'g');
+  const path = document.createElementNS(SVG, 'path');
+  path.setAttribute('class', 'line');
+  g.append(path);
+  f.dots = f.anchors.map(() => {
+    const ring = document.createElementNS(SVG, 'circle'); ring.setAttribute('class', 'ring'); ring.setAttribute('r', 4);
+    const dot = document.createElementNS(SVG, 'circle'); dot.setAttribute('class', 'dot'); dot.setAttribute('r', 3.5);
+    const hit = document.createElementNS(SVG, 'circle'); hit.setAttribute('class', 'hit'); hit.setAttribute('r', 14);
+    hit.addEventListener('click', () => select(f.id, true));
+    hit.addEventListener('mouseenter', () => setHover(f.id, true));
+    hit.addEventListener('mouseleave', () => setHover(f.id, false));
+    g.append(ring, dot, hit);
+    return { ring, dot, hit };
+  });
+  svg.append(g);
+  Object.assign(f, { li, head, g, path, title: f.title, titleEl: li.querySelector('.feature-title') });
+}
+
+function setHover(id, on) {
+  const f = FEATURES.find((x) => x.id === id);
+  f.li.classList.toggle('hover', on);
+  f.g.classList.toggle('hover', on);
+}
+
+let activeId = null;
+function select(id, move) {
+  activeId = id;
+  for (const f of FEATURES) {
+    const on = f.id === id;
+    f.li.classList.toggle('active', on);
+    f.g.classList.toggle('active', on);
+    f.head.setAttribute('aria-expanded', on);
+    if (on) svg.append(f.g); // draw the active line on top
+  }
+  if (move) {
+    goTo(FEATURES.find((f) => f.id === id).view);
+    // once the specs have expanded, make sure the whole item is visible in the list
+    const li = FEATURES.find((f) => f.id === id).li;
+    if (isWide) setTimeout(() => li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 400);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Camera views & framing
 // ---------------------------------------------------------------------------
 const TARGET = new THREE.Vector3(0, 11, 0);
 const VIEWS = {
-  iso:   new THREE.Vector3(-115, 120, 190),
-  front: new THREE.Vector3(0, 20, 245),
-  back:  new THREE.Vector3(0, 20, -245),
-  top:   new THREE.Vector3(0, 260, 0.01),
+  back:  new THREE.Vector3(125, 95, -190),
+  front: new THREE.Vector3(-125, 95, 190),
+  top:   new THREE.Vector3(110, 175, -150),
 };
-// pull the camera back on narrow (portrait) screens so the whole device fits
-const fit = () => Math.max(1, 1.45 / camera.aspect);
+let isWide = true;
+// On wide screens the model lives in the left ~60% of the stage (the list takes the rest).
+const MODEL_REGION = 0.6;
+const fit = () => (isWide ? Math.max(1, 1.5 / (camera.aspect * MODEL_REGION)) : Math.max(0.85, 1.15 / camera.aspect));
 const viewPos = (name) => VIEWS[name].clone().sub(TARGET).multiplyScalar(fit()).add(TARGET);
-camera.position.copy(viewPos('iso'));
+
+let stageRect = stage.getBoundingClientRect();
+function resize() {
+  isWide = matchMedia('(min-width: 900px)').matches;
+  stageRect = stage.getBoundingClientRect();
+  const { width: w, height: h } = stageRect;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  // shift the projection so the model sits left of centre, under the heading
+  if (isWide) camera.setViewOffset(w, h, w * 0.17, -h * 0.08, w, h);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  // keep the current angle, but re-fit the distance
+  const dir = camera.position.clone().sub(TARGET);
+  camera.position.copy(TARGET).addScaledVector(dir.normalize(), VIEWS.back.clone().sub(TARGET).length() * fit());
+}
+addEventListener('resize', resize);
+addEventListener('scroll', () => (stageRect = stage.getBoundingClientRect()), { passive: true });
+
+camera.position.copy(VIEWS.back);
 controls.target.copy(TARGET);
+resize();
 controls.update();
 
 let tween = null;
 function goTo(name) {
   tween = { from: camera.position.clone(), to: viewPos(name), t: 0 };
-  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === name));
 }
-document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => goTo(b.dataset.view)));
-controls.addEventListener('start', () => {
-  tween = null;
-  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
-});
+controls.addEventListener('start', () => (tween = null));
 
+// ---------------------------------------------------------------------------
+// Leader lines: project anchors to screen every frame and route orthogonal,
+// rounded lines to each list item.
+// ---------------------------------------------------------------------------
+const tmp = new THREE.Vector3();
+function toScreen(v) {
+  tmp.copy(v).project(camera);
+  return { x: (tmp.x + 1) / 2 * stageRect.width, y: (1 - tmp.y) / 2 * stageRect.height };
+}
+function facing(a) {
+  tmp.copy(camera.position).sub(a.pos).normalize();
+  return THREE.MathUtils.clamp((a.normal.dot(tmp) - 0.08) * 6, 0, 1);
+}
+// polyline → SVG path with rounded corners
+function rounded(pts, r = 14) {
+  pts = pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > 0.5);
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    const l1 = Math.hypot(b.x - a.x, b.y - a.y), l2 = Math.hypot(c.x - b.x, c.y - b.y);
+    const rr = Math.min(r, l1 / 2, l2 / 2);
+    const p1 = { x: b.x - (b.x - a.x) / l1 * rr, y: b.y - (b.y - a.y) / l1 * rr };
+    const p2 = { x: b.x + (c.x - b.x) / l2 * rr, y: b.y + (c.y - b.y) / l2 * rr };
+    d += ` L${p1.x},${p1.y} Q${b.x},${b.y} ${p2.x},${p2.y}`;
+  }
+  const z = pts[pts.length - 1];
+  return d + ` L${z.x},${z.y}`;
+}
+const BOX = [];
+for (const x of [-W / 2, W / 2]) for (const y of [0, BASE + H]) for (const z of [-D / 2, D / 2]) BOX.push(new THREE.Vector3(x, y, z));
+
+function updateOverlay() {
+  const pts = BOX.map(toScreen);
+  const bbox = {
+    right: Math.max(...pts.map((p) => p.x)),
+    bottom: Math.max(...pts.map((p) => p.y)),
+  };
+  const listRect = list.getBoundingClientRect();
+  const listLeft = listRect.left - stageRect.left;
+
+  // project every anchor once
+  const all = [];
+  for (const f of FEATURES) {
+    f.proj = f.anchors.map((id) => ({ ...toScreen(ANCHORS[id].pos), vis: facing(ANCHORS[id]) }));
+    f.proj.forEach((p, k) => {
+      const { ring, dot, hit } = f.dots[k];
+      for (const c of [ring, dot, hit]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      dot.setAttribute('opacity', p.vis * (f.id === activeId ? 1 : 0.75));
+      hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
+      ring.style.visibility = p.vis > 0.5 ? 'visible' : 'hidden';
+      all.push(p);
+    });
+  }
+  if (!isWide) return;
+
+  // first pass: start point + end point, decide route style
+  const elbowed = [];
+  for (const f of FEATURES) {
+    const vis = f.proj.filter((p) => p.vis > 0.02);
+    f.route = null;
+    f.path.style.opacity = vis.length ? Math.max(...vis.map((p) => p.vis)) : 0;
+    if (!vis.length) continue;
+    const head = f.head.getBoundingClientRect(), title = f.titleEl.getBoundingClientRect();
+    // item scrolled out of the list → no line
+    if (title.bottom < listRect.top || title.top > listRect.bottom) { f.path.style.opacity = 0; continue; }
+    const end = { x: head.left - stageRect.left, y: title.top + title.height / 2 - stageRect.top };
+    const itemBottom = head.bottom - stageRect.top - 6;
+    let d = '', start;
+    if (vis.length > 1) {
+      // several ports: short drops into a shared bus just below them
+      const busY = Math.max(...vis.map((p) => p.y)) + 16;
+      const xs = vis.map((p) => p.x);
+      for (const p of vis) d += `M${p.x},${p.y} L${p.x},${busY} `;
+      d += `M${Math.min(...xs)},${busY} L${Math.max(...xs)},${busY} `;
+      start = { x: Math.max(...xs), y: busY };
+    } else start = vis[0];
+    // item reaches below the model → drop straight down, then across
+    const lowY = Math.max(end.y, bbox.bottom + 18);
+    if (lowY <= itemBottom) {
+      f.route = { d, pts: [start, { x: start.x, y: lowY }, { x: end.x, y: lowY }] };
+    } else {
+      f.route = { d, start, end };
+      elbowed.push(f);
+    }
+  }
+  // second pass: stagger vertical elbows between the model and the list
+  elbowed.sort((a, b) => a.route.end.y - b.route.end.y);
+  const x0 = Math.min(bbox.right + 40, listLeft - 60), x1 = Math.max(x0, listLeft - 48);
+  elbowed.forEach((f, k) => {
+    const ex = elbowed.length === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * k / (elbowed.length - 1);
+    const { start, end } = f.route;
+    // nudge the first horizontal run down so it doesn't cut through another port
+    let y = start.y;
+    for (let n = 0; n < 6 && all.some((q) => q.vis > 0.3 && q.x > start.x + 6 && q.x < ex && Math.abs(q.y - y) < 10); n++) y += 12;
+    f.route.pts = [start, { x: start.x, y }, { x: ex, y }, { x: ex, y: end.y }, end];
+  });
+  for (const f of FEATURES) if (f.route) f.path.setAttribute('d', f.route.d + rounded(f.route.pts));
+}
+
+// ---------------------------------------------------------------------------
+// Tools, loop
+// ---------------------------------------------------------------------------
 const spinBtn = document.getElementById('spin');
 spinBtn.addEventListener('click', () => {
   controls.autoRotate = !controls.autoRotate;
   controls.autoRotateSpeed = 1.5;
   spinBtn.setAttribute('aria-pressed', controls.autoRotate);
-});
-const bgBtn = document.getElementById('bg');
-bgBtn.addEventListener('click', () => {
-  const light = bgBtn.getAttribute('aria-pressed') !== 'true';
-  bgBtn.setAttribute('aria-pressed', light);
-  setTheme(light ? 'light' : 'studio');
 });
 
 let device;
@@ -569,16 +853,10 @@ document.getElementById('export').addEventListener('click', async () => {
   URL.revokeObjectURL(a.href);
 });
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-renderer.setAnimationLoop(() => {
+function frame() {
   if (tween) {
-    tween.t = Math.min(tween.t + 0.025, 1);
+    tween.t = Math.min(tween.t + 0.022, 1);
     // interpolate on a sphere around the target so the camera arcs instead of cutting through
     const a = tween.from.clone().sub(TARGET), b = tween.to.clone().sub(TARGET);
     const k = ease(tween.t);
@@ -591,11 +869,14 @@ renderer.setAnimationLoop(() => {
   }
   controls.update();
   renderer.render(scene, camera);
-});
+  updateOverlay();
+}
+renderer.setAnimationLoop(frame);
 
 // handy for debugging from the console
-window.viewer = { scene, camera, controls, renderer, render: () => (controls.update(), renderer.render(scene, camera)) };
+window.viewer = { scene, camera, controls, renderer, select, render: frame };
 
+select(FEATURES[0].id, false);
 build().then((d) => (device = d)).catch((e) => {
   document.getElementById('loading').textContent = 'Failed to build model: ' + e.message;
   console.error(e);
