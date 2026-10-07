@@ -682,7 +682,9 @@ function select(id, move) {
     if (on) svg.append(f.g); // draw the active line on top
   }
   if (move) {
-    goTo(FEATURES.find((f) => f.id === id).view);
+    // only turn the device if this feature's ports aren't already facing the viewer
+    const f = FEATURES.find((x) => x.id === id);
+    if (!f.anchors.every((a) => facing(ANCHORS[a]) > 0.5)) goTo(f.view);
     // once the specs have expanded, make sure the whole item is visible in the list
     const li = FEATURES.find((f) => f.id === id).li;
     if (isWide) setTimeout(() => li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 400);
@@ -861,7 +863,9 @@ function frame() {
     const a = tween.from.clone().sub(TARGET), b = tween.to.clone().sub(TARGET);
     const k = ease(tween.t);
     const dir = a.clone().normalize().lerp(b.clone().normalize(), k);
-    dir.y += Math.sin(Math.PI * k) * 0.35; // lift over the top when going front ↔ back
+    // lift over the top only when swinging round to the opposite side
+    const opposite = THREE.MathUtils.clamp(-a.clone().normalize().dot(b.clone().normalize()), 0, 1);
+    dir.y += Math.sin(Math.PI * k) * 0.35 * opposite;
     dir.normalize();
     const len = THREE.MathUtils.lerp(a.length(), b.length(), k);
     camera.position.copy(TARGET).addScaledVector(dir, len);
