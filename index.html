@@ -527,13 +527,16 @@ const VIEWS = {
   back:  new THREE.Vector3(0, 20, -245),
   top:   new THREE.Vector3(0, 260, 0.01),
 };
-camera.position.copy(VIEWS.iso);
+// pull the camera back on narrow (portrait) screens so the whole device fits
+const fit = () => Math.max(1, 1.45 / camera.aspect);
+const viewPos = (name) => VIEWS[name].clone().sub(TARGET).multiplyScalar(fit()).add(TARGET);
+camera.position.copy(viewPos('iso'));
 controls.target.copy(TARGET);
 controls.update();
 
 let tween = null;
 function goTo(name) {
-  tween = { from: camera.position.clone(), to: VIEWS[name].clone(), t: 0 };
+  tween = { from: camera.position.clone(), to: viewPos(name), t: 0 };
   document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === name));
 }
 document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => goTo(b.dataset.view)));
