@@ -625,7 +625,7 @@ function setupLineArt(device, solidGeo, holeOutlines) {
   const meshes = [];
   device.traverse((o) => o.isMesh && meshes.push(o));
   for (const m of meshes) {
-    if (m.renderOrder === 2) { lineArt.swaps.push({ m, hide: true }); continue; }   // printed labels
+    if (m.renderOrder === 2) continue;   // printed labels stay as they are (white text)
     if (m.userData.filler) { lineArt.swaps.push({ m, hide: true }); continue; }     // internal blocks
     // the CSG shell's triangulation makes noisy auto-edges: its lines are drawn explicitly below.
     // tiny pins and dark back plates would only add clutter.
