@@ -590,7 +590,7 @@ async function build() {
 // ---------------------------------------------------------------------------
 // Line-art style: black body, white crease edges + silhouette outline
 // ---------------------------------------------------------------------------
-const LINE = { color: 0xffffff, width: 1.4, outline: 1.8, crease: 20 };
+const LINE = { color: 0xffffff, width: 1.4, outline: 3, crease: 20 }; // px: inner lines, outer silhouette
 const lineMat = new LineMaterial({ color: LINE.color, linewidth: LINE.width });
 const inkMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
