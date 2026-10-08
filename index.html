@@ -109,6 +109,7 @@
   .tools button[aria-pressed="true"] { background: #fff; color: #2f5d70; }
   .tools .hint { font-size: 12.5px; color: var(--muted); margin-left: 6px; }
 
+  body.line-art { background: #000; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 14px; color: #fff; }
 
   /* ---- small screens: intro, sticky model, list below; dots instead of leader lines ---- */
@@ -650,6 +651,7 @@ function setupLineArt(device, solidGeo, holeOutlines) {
   hull.visible = false;
   device.add(hull);
   lineArt.hull = hull;
+  lineArt.studioBg = scene.background;
   setLineArt(true);
 }
 
@@ -662,6 +664,10 @@ function setLineArt(on) {
     s.edges.visible = on;
   }
   lineArt.hull.visible = on;
+  // black backdrop in line-art mode (no floor shadow)
+  scene.background = on ? new THREE.Color(0x000000) : lineArt.studioBg;
+  floor.visible = !on;
+  document.body.classList.toggle('line-art', on);
   document.getElementById('style').setAttribute('aria-pressed', on);
 }
 
