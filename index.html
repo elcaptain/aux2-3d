@@ -143,6 +143,7 @@
 <div id="stage">
   <svg id="leaders" aria-hidden="true"></svg>
   <div class="tools">
+    <button id="style" aria-pressed="true">Line art</button>
     <button id="spin" aria-pressed="false">Rotate</button>
     <button id="export">Export GLB</button>
     <span class="hint">Drag to rotate · scroll to zoom</span>
@@ -157,6 +158,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 
 // ---------------------------------------------------------------------------
@@ -372,7 +376,11 @@ function drawLine(ctx, l, x, y, fpx) {
 // ---------------------------------------------------------------------------
 const RECESS = 0.5; // connectors sit slightly behind the outer surface
 const HOLE_DEPTH = WALL + 4;
-const holeFrom = (shape) => prism(shape, HOLE_DEPTH, 1);
+const holeFrom = (shape) => {
+  const g = prism(shape, HOLE_DEPTH, 1);
+  g.userData.outline = shape; // kept for the line-art style
+  return g;
+};
 
 function rj45() {
   const g = new THREE.Group();
@@ -502,16 +510,20 @@ async function build() {
     shell = ev.evaluate(shell, b, SUBTRACTION);
   };
   sub(new THREE.BoxGeometry(W + 10, 20, D + 10), (b) => (b.position.y = BASE + H + 10));
+  // solid outer volume (no holes) — used for the line-art silhouette
+  const solidGeo = shell.geometry.clone();
   // hollow interior
   sub(plateGeo(W - 2 * WALL, D - 2 * WALL, H - WALL - CAP_T - 0.6, R - WALL), (b) => (b.position.y = BASE + WALL));
   // recess for the white top
   sub(plateGeo(W - 2 * CAP_INSET + 0.1, D - 2 * CAP_INSET + 0.1, CAP_T + 2, R - CAP_INSET), (b) => (b.position.y = BASE + H - CAP_T));
 
   const internals = new THREE.Group();
+  const holeOutlines = [];
   for (const p of PORTS) {
     if (!p.make) continue;
     const { parts, hole } = p.make();
     sub(hole, (b) => faceTransform(b, p.face, p.d, p.top));
+    holeOutlines.push(faceTransform(loopLines(hole.userData.outline.getPoints(16), 0.03), p.face, p.d, p.top));
     internals.add(faceTransform(parts, p.face, p.d, p.top));
   }
 
@@ -529,6 +541,7 @@ async function build() {
   // --- internals faintly visible through the frosted shell ---
   const pcb = mesh(new THREE.BoxGeometry(W - 8, 1.6, D - 8), M.pcb);
   pcb.position.y = BASE + 4.5;
+  pcb.userData.filler = true;
   internals.add(pcb);
   const blocks = [
     // [x, z, w, h, d] — rough component volumes
@@ -539,6 +552,7 @@ async function build() {
   for (const [x, z, w, h, d] of blocks) {
     const b = mesh(new THREE.BoxGeometry(w, h, d), M.internal);
     b.position.set(x, BASE + 5.3 + h / 2, z);
+    b.userData.filler = true;
     internals.add(b);
   }
   internals.name = 'internals';
@@ -568,7 +582,87 @@ async function build() {
 
   scene.add(device);
   document.getElementById('loading').remove();
+  setupLineArt(device, solidGeo, holeOutlines);
   return device;
+}
+
+// ---------------------------------------------------------------------------
+// Line-art style: black body, white crease edges + silhouette outline
+// ---------------------------------------------------------------------------
+const LINE = { color: 0xffffff, width: 1.4, outline: 1.8, crease: 20 };
+const lineMat = new LineMaterial({ color: LINE.color, linewidth: LINE.width });
+const inkMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+
+// closed 2D loop (in a face plane) → fat line segments at depth z
+function loopLines(points, z = 0) {
+  const pos = [];
+  points.forEach((p, i) => {
+    const q = points[(i + 1) % points.length];
+    pos.push(p.x, p.y, z, q.x, q.y, z);
+  });
+  return new LineSegments2(new LineSegmentsGeometry().setPositions(pos), lineMat);
+}
+// inverted hull pushed out in screen space → constant-width silhouette line
+const hullMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 8, // stay behind the body
+  uniforms: { width: { value: LINE.outline }, resolution: { value: new THREE.Vector2(1, 1) }, color: { value: new THREE.Color(LINE.color) } },
+  vertexShader: `
+    uniform float width; uniform vec2 resolution;
+    void main() {
+      vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      vec3 n = normalize(normalMatrix * normal);
+      vec2 dir = normalize((projectionMatrix * vec4(n, 0.0)).xy + 1e-6);
+      clip.xy += dir * width * 2.0 / resolution * clip.w;
+      gl_Position = clip;
+    }`,
+  fragmentShader: `uniform vec3 color; void main() { gl_FragColor = vec4(color, 1.0); }`,
+});
+const lineArt = { on: false, swaps: [] };
+
+function setupLineArt(device, solidGeo, holeOutlines) {
+  const meshes = [];
+  device.traverse((o) => o.isMesh && meshes.push(o));
+  for (const m of meshes) {
+    if (m.renderOrder === 2) { lineArt.swaps.push({ m, hide: true }); continue; }   // printed labels
+    if (m.userData.filler) { lineArt.swaps.push({ m, hide: true }); continue; }     // internal blocks
+    // the CSG shell's triangulation makes noisy auto-edges: its lines are drawn explicitly below.
+    // tiny pins and dark back plates would only add clutter.
+    const plain = m.name === 'shell' || m.material === M.void || m.material === M.gold;
+    const edges = plain ? new THREE.Group()
+      : new LineSegments2(new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(m.geometry, LINE.crease)), lineMat);
+    edges.visible = false;
+    m.add(edges);
+    lineArt.swaps.push({ m, real: m.material, edges });
+  }
+  // shell: flat top rim + every port opening
+  const shellLines = new THREE.Group();
+  const rim = loopLines(roundedRect(W, D, R).getPoints(16));
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.y = BASE + H;
+  shellLines.add(rim, ...holeOutlines);
+  shellLines.visible = false;
+  device.add(shellLines);
+  lineArt.swaps.push({ m: shellLines, extra: true });
+  const hull = new THREE.Mesh(solidGeo, hullMat);
+  const shell = device.getObjectByName('shell');
+  hull.position.copy(shell.position); // same placement as the shell (it sits on the feet)
+  hull.visible = false;
+  device.add(hull);
+  lineArt.hull = hull;
+  setLineArt(true);
+}
+
+function setLineArt(on) {
+  lineArt.on = on;
+  for (const s of lineArt.swaps) {
+    if (s.hide) { s.m.visible = !on; continue; }
+    if (s.extra) { s.m.visible = on; continue; }
+    s.m.material = on ? inkMat : s.real;
+    s.edges.visible = on;
+  }
+  lineArt.hull.visible = on;
+  document.getElementById('style').setAttribute('aria-pressed', on);
 }
 
 // ---------------------------------------------------------------------------
@@ -756,7 +850,10 @@ function resize() {
   isWide = matchMedia('(min-width: 900px)').matches;
   stageRect = stage.getBoundingClientRect();
   const { width: w, height: h } = stageRect;
+  if (!w || !h) return; // hidden / not laid out yet
   renderer.setSize(w, h, false);
+  lineMat.resolution.set(w, h);
+  hullMat.uniforms.resolution.value.set(w, h);
   camera.aspect = w / h;
   // shift the projection so the model sits left of centre, under the heading
   if (isWide) camera.setViewOffset(w, h, w * 0.17, -h * 0.08, w, h);
@@ -889,6 +986,8 @@ function updateOverlay() {
 // ---------------------------------------------------------------------------
 // Tools, loop
 // ---------------------------------------------------------------------------
+document.getElementById('style').addEventListener('click', () => lineArt.hull && setLineArt(!lineArt.on));
+
 const spinBtn = document.getElementById('spin');
 spinBtn.addEventListener('click', () => {
   controls.autoRotate = !controls.autoRotate;
