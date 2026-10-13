@@ -147,6 +147,7 @@
 <div id="stage">
   <svg id="leaders" aria-hidden="true"></svg>
   <div class="tools">
+    <button id="open" aria-pressed="false">Open case</button>
     <button id="style" aria-pressed="true">Line art</button>
     <button id="spin" aria-pressed="false">Rotate</button>
     <button id="export">Export GLB</button>
@@ -165,7 +166,7 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+import { Brush, Evaluator, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 
 // ---------------------------------------------------------------------------
 // Dimensions (mm). Scale derived from the straight-on photo: RJ45 jack = 16 mm.
@@ -442,6 +443,9 @@ function jack35(ringMat = M.black) {
   g.add(mesh(prism(ring, 1.2, -RECESS), ringMat));
   const body = circle(3.0); body.holes.push(circle(1.75, new THREE.Path()));
   g.add(mesh(prism(body, 10, -RECESS - 1.2), M.black));
+  const box = mesh(new THREE.BoxGeometry(6.6, 5.8, 12), M.black);
+  box.position.set(0, -0.3, -RECESS - 3 - 6);
+  g.add(box);
   const back = mesh(new THREE.CircleGeometry(1.8, 24), M.void); back.position.z = -8; g.add(back);
   return { parts: g, hole: holeFrom(circle(3.3)) };
 }
@@ -478,13 +482,100 @@ const PORTS = [
   { id: 'usbc', face: 'front', d: 54.8, top: 16.3, make: usbC, label: ['USB-C', `5V ${DC} 2A`], lTop: 9.5 },
   { id: 'rj45', face: 'front', d: 72.8, top: 12.2, make: rj45 },
   { face: 'front', label: ['PoE', '802.3af'], d: 86.8, lTop: 9.9 },
-  // back: USB-A · RS-232 Port 1/2 · Grove · Audio
-  { id: 'usba', face: 'back', d: 38.5, top: 13.6, make: usbA, label: ['USB-A'], lTop: 8.0 },
-  { id: 'port1', face: 'back', d: 52.5, top: 13.6, make: () => jack35(), label: ['Port 1'], lTop: 8.4 },
-  { id: 'port2', face: 'back', d: 63.5, top: 13.6, make: () => jack35(), label: ['Port 2'], lTop: 8.4 },
-  { id: 'grove', face: 'back', d: 76.0, top: 14.2, make: grove, label: ['Grove Port'], lTop: 8.4 },
-  { id: 'audio', face: 'back', d: 88.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
+  // back: USB-A · RS-232 Port 1/2 · Grove · Audio (positions from the PCB photo)
+  { id: 'usba', face: 'back', d: 23.3, top: 13.6, make: usbA, label: ['USB-A'], lTop: 8.0 },
+  { id: 'port1', face: 'back', d: 41.4, top: 13.6, make: () => jack35(), label: ['Port 1'], lTop: 8.4 },
+  { id: 'port2', face: 'back', d: 53.9, top: 13.6, make: () => jack35(), label: ['Port 2'], lTop: 8.4 },
+  { id: 'grove', face: 'back', d: 70.2, top: 14.2, make: grove, label: ['Grove Port'], lTop: 8.4 },
+  { id: 'audio', face: 'back', d: 84.0, top: 14.2, make: () => jack35(M.green), label: ['Audio'], lTop: 8.4 },
 ];
+
+// ---------------------------------------------------------------------------
+// PCB — laid out from the top-down photo of the board (component side up).
+// Photo px → model mm: 14.4 px/mm; photo top edge = +x end, photo left edge = back face.
+// ---------------------------------------------------------------------------
+const PCB = { top: BASE + 7.2, t: 1.6, len: 93.75, wid: 56.3, cx: -0.78 };
+const PX_MM = 14.4;
+const photoX = (py) => 46.1 - (py - 240) / PX_MM;
+const photoZ = (px) => -28.15 + (px - 330) / PX_MM;
+
+Object.assign(M, {
+  board: new THREE.MeshStandardMaterial({ color: 0x141516, roughness: 0.45, metalness: 0.1 }),
+  chip: new THREE.MeshStandardMaterial({ color: 0x232426, roughness: 0.55 }),
+  poe: new THREE.MeshStandardMaterial({ color: 0x3f7a5a, roughness: 0.6 }),
+  tape: new THREE.MeshStandardMaterial({ color: 0xb9a548, roughness: 0.5 }),
+  sticker: new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.8 }),
+  standoff: new THREE.MeshStandardMaterial({ color: 0xd8dee4, roughness: 0.6 }),
+});
+
+// box component from a photo bounding box (px), height h above the board
+function part(px0, py0, px1, py1, h, mat, y0 = PCB.top) {
+  const m = mesh(new THREE.BoxGeometry((py1 - py0) / PX_MM, h, (px1 - px0) / PX_MM), mat);
+  m.position.set(photoX((py0 + py1) / 2), y0 + h / 2, photoZ((px0 + px1) / 2));
+  return m;
+}
+// flat silkscreen text lying on the board, reading along +z
+function silk(lines, px, py, size = 1.4) {
+  const label = makeLabel(lines, size);
+  label.rotation.x = -Math.PI / 2;
+  const g = new THREE.Group();
+  g.add(label);
+  g.rotation.y = -Math.PI / 2;
+  g.position.set(photoX(py), PCB.top + 0.02, photoZ(px));
+  return g;
+}
+
+function buildPCB() {
+  const g = new THREE.Group();
+  g.name = 'pcb';
+  // board with mounting holes
+  const holes = [[42.85, 23.25], [42.85, -23.25], [-42.85, 23.25], [-42.85, -23.25]];
+  const shape = roundedRect(PCB.len, PCB.wid, 3.5);
+  for (const [x, z] of holes) {
+    const h = new THREE.Path();
+    h.absarc(x, -z, 1.6, 0, Math.PI * 2, true); // shape y becomes -z after rotateX
+    shape.holes.push(h);
+  }
+  const board = mesh(new THREE.ExtrudeGeometry(shape, { depth: PCB.t, bevelEnabled: false, curveSegments: 16 }), M.board, { cast: true });
+  board.geometry.rotateX(-Math.PI / 2);
+  board.position.set(PCB.cx, PCB.top - PCB.t, 0);
+  board.receiveShadow = true;
+  g.add(board);
+  // standoffs down to the tray
+  for (const [x, z] of holes) {
+    const so = mesh(new THREE.CylinderGeometry(2.4, 2.4, PCB.top - PCB.t - (BASE + WALL), 20), M.standoff);
+    so.position.set(PCB.cx + x, (PCB.top - PCB.t + BASE + WALL) / 2, z);
+    g.add(so);
+  }
+  // PoE daughterboard (standing on edge) + its transformer and bulk capacitor
+  g.add(part(455, 212, 965, 240, 13.5, M.poe));
+  g.add(part(640, 262, 760, 410, 9, M.tape));
+  const cap = mesh(new THREE.CylinderGeometry(2.4, 2.4, 7.5, 24), M.metal);
+  cap.position.set(photoX(300), PCB.top + 3.75, photoZ(905));
+  g.add(cap);
+  // main chips (just blocks)
+  g.add(part(780, 475, 895, 660, 3.2, M.chip));   // Ethernet magnetics
+  g.add(part(755, 705, 860, 810, 1.0, M.chip));   // Ethernet controller
+  g.add(part(598, 640, 642, 682, 3.0, M.chip));   // inductor
+  g.add(part(500, 700, 610, 790, 2.5, M.chip));   // regulator block
+  g.add(part(545, 965, 620, 1055, 1.2, M.chip));  // RS-232 transceiver
+  g.add(part(668, 968, 728, 1040, 1.2, M.chip));  // RS-232 transceiver
+  g.add(part(640, 1165, 712, 1245, 1.5, M.chip)); // flash
+  g.add(part(755, 1160, 862, 1268, 0.9, M.chip)); // ESP32-S3
+  g.add(part(645, 1330, 710, 1460, 1.2, M.chip)); // PCM5122 DAC
+  g.add(part(955, 1222, 1112, 1508, 3.0, M.metal)); // Wi-Fi / Bluetooth shield
+  g.add(part(1058, 1000, 1118, 1062, 3.5, M.black)); // reset button
+  g.add(part(805, 1408, 882, 1485, 0.08, M.sticker)); // QR sticker
+  // silkscreen
+  g.add(silk(['Home Assistant Connect AUX-2'], 717, 1525, 2.0));
+  g.add(silk(['USB HOST'], 385, 380));
+  g.add(silk(['ETH'], 1075, 440));
+  g.add(silk(['USB C'], 1065, 765));
+  g.add(silk(['GROVE'], 360, 1295));
+  g.add(silk(['WIFI', 'BLUETOOTH'], 1040, 1198));
+  g.add(silk(['RST'], 1070, 1090, 1.2));
+  return g;
+}
 
 // ---------------------------------------------------------------------------
 // Build
@@ -532,49 +623,54 @@ async function build() {
     internals.add(faceTransform(parts, p.face, p.d, p.top));
   }
 
-  shell.material = M.frosted;
-  shell.castShadow = true;
-  shell.name = 'shell';
-  device.add(shell);
+  // --- split into a thin bottom tray and the cover that lifts off ---
+  const SPLIT = BASE + WALL;
+  const below = new Brush(new THREE.BoxGeometry(W + 10, 20, D + 10));
+  below.position.y = SPLIT - 10;
+  below.updateMatrixWorld();
+  const shellBrush = shell;
+  const coverMesh = ev.evaluate(shellBrush, below, SUBTRACTION);
+  const trayMesh = ev.evaluate(shellBrush, below, INTERSECTION);
+  const solidBrush = new Brush(solidGeo);
+  solidBrush.position.y = BASE;
+  solidBrush.updateMatrixWorld();
+  const solidCover = ev.evaluate(solidBrush, below, SUBTRACTION).geometry;
+  const solidTray = ev.evaluate(solidBrush, below, INTERSECTION).geometry;
+
+  const cover = new THREE.Group();
+  cover.name = 'cover';
+  device.add(cover);
+  for (const [m, name] of [[coverMesh, 'shell'], [trayMesh, 'tray']]) {
+    m.material = M.frosted;
+    m.castShadow = true;
+    m.name = name;
+  }
+  cover.add(coverMesh);
+  device.add(trayMesh);
 
   // --- white top ---
   const cap = mesh(plateGeo(W - 2 * CAP_INSET, D - 2 * CAP_INSET, CAP_T, R - CAP_INSET, 0.35, 4), M.cap, { cast: true });
   cap.position.y = BASE + H - CAP_T - 0.03;
   cap.name = 'top';
-  device.add(cap);
+  cover.add(cap);
 
-  // --- internals faintly visible through the frosted shell ---
-  const pcb = mesh(new THREE.BoxGeometry(W - 8, 1.6, D - 8), M.pcb);
-  pcb.position.y = BASE + 4.5;
-  pcb.userData.filler = true;
-  internals.add(pcb);
-  const blocks = [
-    // [x, z, w, h, d] — rough component volumes
-    [-28, 18, 30, 9, 20],
-    [-30, -14, 26, 6, 22],
-    [5, 0, 18, 3, 18],
-  ];
-  for (const [x, z, w, h, d] of blocks) {
-    const b = mesh(new THREE.BoxGeometry(w, h, d), M.internal);
-    b.position.set(x, BASE + 5.3 + h / 2, z);
-    b.userData.filler = true;
-    internals.add(b);
-  }
+  // --- the board (also faintly visible through the frosted shell) ---
+  internals.add(buildPCB());
   internals.name = 'internals';
   device.add(internals);
 
   // --- labels & indicator dots ---
   const OUT = 0.03;
   for (const p of PORTS) {
-    if (p.label) device.add(faceTransform(makeLabel(p.label), p.face, p.d, p.lTop, OUT));
+    if (p.label) cover.add(faceTransform(makeLabel(p.label), p.face, p.d, p.lTop, OUT));
   }
   // RS-232 heading spanning both serial ports, with rules either side
   const rs = makeLabel(['RS-232']);
-  device.add(faceTransform(rs, 'back', 58, 5.0, OUT));
-  for (const [d0, d1] of [[47.3, 54.2], [61.8, 68.7]]) {
+  cover.add(faceTransform(rs, 'back', 47.65, 5.0, OUT));
+  for (const [d0, d1] of [[36.2, 43.1], [52.2, 59.1]]) {
     const rule = mesh(new THREE.PlaneGeometry(d1 - d0, 0.14), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, toneMapped: false }));
     rule.renderOrder = 2;
-    device.add(faceTransform(rule, 'back', (d0 + d1) / 2, 4.6, OUT));
+    cover.add(faceTransform(rule, 'back', (d0 + d1) / 2, 4.6, OUT));
   }
 
   // --- feet ---
@@ -587,7 +683,7 @@ async function build() {
 
   scene.add(device);
   document.getElementById('loading').remove();
-  setupLineArt(device, solidGeo, holeOutlines);
+  setupLineArt(device, { cover: solidCover, tray: solidTray }, holeOutlines);
   return device;
 }
 
@@ -625,36 +721,44 @@ const hullMat = new THREE.ShaderMaterial({
 });
 const lineArt = { on: false, swaps: [] };
 
-function setupLineArt(device, solidGeo, holeOutlines) {
+function setupLineArt(device, solids, holeOutlines) {
   const meshes = [];
   device.traverse((o) => o.isMesh && meshes.push(o));
   for (const m of meshes) {
-    if (m.renderOrder === 2) continue;   // printed labels stay as they are (white text)
-    if (m.userData.filler) { lineArt.swaps.push({ m, hide: true }); continue; }     // internal blocks
+    if (m.renderOrder === 2) continue;   // printed labels / silkscreen stay as they are (white text)
+    if (m.userData.filler) { lineArt.swaps.push({ m, hide: true }); continue; }
     // the CSG shell's triangulation makes noisy auto-edges: its lines are drawn explicitly below.
     // tiny pins and dark back plates would only add clutter.
-    const plain = m.name === 'shell' || m.material === M.void || m.material === M.gold;
+    const plain = m.name === 'shell' || m.name === 'tray' || m.material === M.void || m.material === M.gold;
     const edges = plain ? new THREE.Group()
       : new LineSegments2(new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(m.geometry, LINE.crease)), lineMat);
     edges.visible = false;
     m.add(edges);
     lineArt.swaps.push({ m, real: m.material, edges });
   }
-  // shell: flat top rim + every port opening
-  const shellLines = new THREE.Group();
-  const rim = loopLines(roundedRect(W, D, R).getPoints(16));
-  rim.rotation.x = -Math.PI / 2;
-  rim.position.y = BASE + H;
-  shellLines.add(rim, ...holeOutlines);
-  shellLines.visible = false;
-  device.add(shellLines);
-  lineArt.swaps.push({ m: shellLines, extra: true });
-  const hull = new THREE.Mesh(solidGeo, hullMat);
-  const shell = device.getObjectByName('shell');
-  hull.position.copy(shell.position); // same placement as the shell (it sits on the feet)
-  hull.visible = false;
-  device.add(hull);
-  lineArt.hull = hull;
+  const cover = device.getObjectByName('cover');
+  const outline = (y, inset = 0) => {
+    const l = loopLines(roundedRect(W - 2 * inset, D - 2 * inset, R - inset).getPoints(16));
+    l.rotation.x = -Math.PI / 2;
+    l.position.y = y;
+    return l;
+  };
+  // cover: flat top rim, split edge, every port opening — tray: its split edge
+  const coverLines = new THREE.Group();
+  coverLines.add(outline(BASE + H), outline(BASE + WALL), outline(BASE + WALL, WALL), ...holeOutlines);
+  const trayLines = new THREE.Group();
+  trayLines.add(outline(BASE + WALL), outline(BASE + WALL, WALL));
+  cover.add(coverLines);
+  device.add(trayLines);
+  for (const l of [coverLines, trayLines]) { l.visible = false; lineArt.swaps.push({ m: l, extra: true }); }
+  // silhouettes (same placement as the shell: it sits on the feet)
+  lineArt.hulls = [[solids.cover, cover], [solids.tray, device]].map(([geo, parent]) => {
+    const hull = new THREE.Mesh(geo, hullMat);
+    hull.position.y = BASE;
+    hull.visible = false;
+    parent.add(hull);
+    return hull;
+  });
   lineArt.studioBg = scene.background;
   setLineArt(true);
 }
@@ -667,7 +771,7 @@ function setLineArt(on) {
     s.m.material = on ? inkMat : s.real;
     s.edges.visible = on;
   }
-  lineArt.hull.visible = on;
+  for (const h of lineArt.hulls) h.visible = on;
   // black backdrop in line-art mode (no floor shadow)
   scene.background = on ? new THREE.Color(0x000000) : lineArt.studioBg;
   floor.visible = !on;
@@ -744,7 +848,8 @@ for (const p of PORTS) {
   const o = faceTransform(new THREE.Object3D(), p.face, p.d, p.top, 0.4);
   ANCHORS[p.id] = { pos: o.position.clone(), normal: new THREE.Vector3(0, 0, p.face === 'front' ? 1 : -1) };
 }
-ANCHORS.radio = { pos: new THREE.Vector3(28, BASE + H + 0.05, -6), normal: new THREE.Vector3(0, 1, 0) };
+// above the Wi-Fi/Bluetooth shield on the board
+ANCHORS.radio = { pos: new THREE.Vector3(photoX(1365), BASE + H + 0.05, photoZ(1033)), normal: new THREE.Vector3(0, 1, 0) };
 
 // ---------------------------------------------------------------------------
 // Feature list (DOM)
@@ -1005,7 +1110,32 @@ function updateOverlay() {
 // ---------------------------------------------------------------------------
 // Tools, loop
 // ---------------------------------------------------------------------------
-document.getElementById('style').addEventListener('click', () => lineArt.hull && setLineArt(!lineArt.on));
+document.getElementById('style').addEventListener('click', () => lineArt.hulls && setLineArt(!lineArt.on));
+
+// ---------------------------------------------------------------------------
+// Open case: lift the cover clear of the connectors and pan up to look inside
+// ---------------------------------------------------------------------------
+const OPEN = { t: 0, target: 0, lift: 55, pan: 20, applied: 0 };
+const openBtn = document.getElementById('open');
+openBtn.addEventListener('click', () => {
+  OPEN.target = OPEN.target ? 0 : 1;
+  openBtn.setAttribute('aria-pressed', !!OPEN.target);
+  openBtn.textContent = OPEN.target ? 'Close case' : 'Open case';
+});
+function updateOpen() {
+  if (OPEN.t === OPEN.target && OPEN.applied === OPEN.t) return;
+  OPEN.t = THREE.MathUtils.clamp(OPEN.t + Math.sign(OPEN.target - OPEN.t) * 0.025, 0, 1);
+  const e = ease(OPEN.t);
+  const cover = device?.getObjectByName('cover');
+  if (cover) cover.position.y = OPEN.lift * e;
+  // pan the view up with the cover, keeping the user's angle
+  const pan = OPEN.pan * e - OPEN.pan * ease(OPEN.applied);
+  TARGET.y += pan; camera.position.y += pan; controls.target.copy(TARGET);
+  if (tween) { tween.from.y += pan; tween.to.y += pan; }
+  OPEN.applied = OPEN.t;
+  // the Wi-Fi/BT anchor sits on the lid when closed, on the radio shield when open
+  ANCHORS.radio.pos.y = THREE.MathUtils.lerp(BASE + H + 0.05, PCB.top + 3.05, e);
+}
 
 const spinBtn = document.getElementById('spin');
 spinBtn.addEventListener('click', () => {
@@ -1043,6 +1173,7 @@ function frame() {
     camera.position.setFromSpherical(sph).add(TARGET);
     if (tween.t >= 1) tween = null;
   }
+  updateOpen();
   controls.update();
   renderer.render(scene, camera);
   updateOverlay();
