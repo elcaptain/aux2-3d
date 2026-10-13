@@ -66,7 +66,7 @@
     --card-border: linear-gradient(#005fbe, rgba(0, 95, 190, 0) 72%);
     margin-bottom: 20px; border-radius: 16px; overflow: hidden;
     border: 1px solid transparent;
-    background: linear-gradient(#010f1e, #000) padding-box, var(--card-border) border-box;
+    background: linear-gradient(rgba(0, 19, 38, 0.8) 16.827%, rgba(0, 0, 0, 0.8)) padding-box, var(--card-border) border-box;
     transition: --card-border .2s;
   }
   .feature:hover, .feature.hover { --card-border: linear-gradient(#1a78d8, rgba(0, 95, 190, 0.1) 80%); }
@@ -76,23 +76,23 @@
   }
   .feature-head {
     all: unset; box-sizing: border-box; width: 100%; cursor: pointer;
-    display: grid; grid-template-columns: 42px 1fr; gap: 12px; align-items: start;
-    padding: 23px 28px 24px 38px;
+    display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start;
+    padding: 24px 40px;
   }
   .feature-head:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 16px; }
   .feature-icon {
-    width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box;
+    width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box;
     border: 1px solid #005fbe; color: #fff;
   }
   .feature.active .feature-icon { border-color: #2f86ff; background: rgba(0, 95, 190, 0.2); }
-  .feature-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .feature-title { display: block; padding-top: 9px; font-weight: 400; font-size: 20px; line-height: 1.2; color: #fff; }
-  .feature-desc { display: block; margin-top: 10px; font-size: 15px; line-height: 1.3; color: #aaabae; }
+  .feature-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feature-title { display: block; padding: 8px 0; font-weight: 500; font-size: 20px; line-height: 1.2; color: #fff; }
+  .feature-desc { display: block; padding: 4px 0; font-size: 16px; line-height: 1.2; color: #aaabae; }
   .feature-specs { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s ease; }
   .feature.active .feature-specs { grid-template-rows: 1fr; }
   .feature-specs > div { overflow: hidden; }
   .feature-specs dl {
-    margin: 0 28px 24px 92px; padding-top: 14px; display: grid; gap: 8px 14px;
+    margin: 0 40px 24px 92px; padding-top: 14px; display: grid; gap: 8px 14px;
     grid-template-columns: minmax(84px, 38%) 1fr; border-top: 1px solid rgba(0, 95, 190, 0.35);
   }
   .feature-specs dl > div { display: contents; }
