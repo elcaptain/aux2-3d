@@ -392,15 +392,15 @@ function rj45() {
   const g = new THREE.Group();
   const w = 16, h = 13;
   const can = roundedRect(w, h, 0.4); can.holes.push(roundedRectPath(w - 0.8, h - 0.8, 0.2));
-  g.add(mesh(prism(can, 20, -RECESS), M.metal));
+  g.add(mesh(prism(can, 20, -RECESS, 1), M.metal));
   // black insert with plug opening (+ latch notch at the bottom)
   const insert = roundedRect(w - 0.8, h - 0.8, 0.2);
   const open = new THREE.Path();
   open.moveTo(-5.85, -2.4); open.lineTo(-2.9, -2.4); open.lineTo(-2.9, -4.6); open.lineTo(2.9, -4.6);
   open.lineTo(2.9, -2.4); open.lineTo(5.85, -2.4); open.lineTo(5.85, 5.0); open.lineTo(-5.85, 5.0); open.closePath();
   insert.holes.push(open);
-  g.add(mesh(prism(insert, 18, -RECESS - 0.6), M.black));
-  const back = mesh(new THREE.PlaneGeometry(w, h), M.void); back.position.z = -16; g.add(back);
+  g.add(mesh(prism(insert, 18, -RECESS - 0.6, 1), M.black));
+  const back = mesh(new THREE.BoxGeometry(w, h, 0.6), M.metal); back.position.z = -RECESS - 20 + 0.3; g.add(back); // closed back
   for (let i = 0; i < 8; i++) {
     const pin = mesh(new THREE.BoxGeometry(0.45, 0.3, 6), M.gold);
     pin.position.set(-3.15 + i * 0.9, 4.75, -9);
@@ -419,21 +419,21 @@ function usbC() {
   const shell = stadium(8.94, 3.26); shell.holes.push(stadium(8.34, 2.66, new THREE.Path()));
   g.add(mesh(prism(shell, 7, -RECESS), M.metal));
   const tongue = mesh(new THREE.BoxGeometry(6.6, 0.7, 5), M.black); tongue.position.z = -RECESS - 1.4 - 2.5; g.add(tongue);
-  const back = mesh(new THREE.PlaneGeometry(9, 3.4), M.void); back.position.z = -7; g.add(back);
+  const back = mesh(new THREE.BoxGeometry(8.94, 3.26, 0.4), M.metal); back.position.z = -RECESS - 7 + 0.2; g.add(back);
   return { parts: g, hole: holeFrom(stadium(9.7, 4.0)) };
 }
 
 function usbA() {
   const g = new THREE.Group();
   const shell = roundedRect(13.15, 5.8, 0.4); shell.holes.push(roundedRectPath(12.5, 5.12, 0.2));
-  g.add(mesh(prism(shell, 14, -RECESS), M.metal));
+  g.add(mesh(prism(shell, 14, -RECESS, 1), M.metal));
   const tongue = mesh(new THREE.BoxGeometry(11, 1.9, 12), M.black); tongue.position.set(0, 1.3, -RECESS - 1.0 - 6); g.add(tongue);
   for (let i = 0; i < 4; i++) {
     const c = mesh(new THREE.BoxGeometry(1.0, 0.15, 6), M.gold);
     c.position.set(-3.75 + i * 2.5, 0.3, -RECESS - 4);
     g.add(c);
   }
-  const back = mesh(new THREE.PlaneGeometry(13, 5.8), M.void); back.position.z = -13; g.add(back);
+  const back = mesh(new THREE.BoxGeometry(13.15, 5.8, 0.5), M.metal); back.position.z = -RECESS - 14 + 0.25; g.add(back);
   return { parts: g, hole: holeFrom(roundedRect(13.7, 6.4, 0.6)) };
 }
 
@@ -454,8 +454,8 @@ function grove() {
   const g = new THREE.Group();
   const housing = roundedRect(9.6, 5.4, 0.3);
   housing.holes.push(roundedRectPath(8.0, 2.4, 0.2));
-  g.add(mesh(prism(housing, 6, -RECESS - 0.3), M.grove));
-  const slot = mesh(new THREE.PlaneGeometry(8, 2.4), M.void); slot.position.z = -5.5; g.add(slot);
+  g.add(mesh(prism(housing, 6, -RECESS - 0.3, 1), M.grove));
+  const slot = mesh(new THREE.BoxGeometry(9.6, 5.4, 0.5), M.grove); slot.position.z = -RECESS - 0.3 - 6 + 0.25; g.add(slot);
   for (let i = 0; i < 4; i++) {
     const p = mesh(new THREE.BoxGeometry(0.5, 0.5, 4), M.gold);
     p.position.set(-3 + i * 2, 0, -5);
@@ -752,12 +752,16 @@ function setupLineArt(device, solids, holeOutlines) {
   device.add(trayLines);
   for (const l of [coverLines, trayLines]) { l.visible = false; lineArt.swaps.push({ m: l, extra: true }); }
   // silhouettes (same placement as the shell: it sits on the feet)
-  lineArt.hulls = [[solids.cover, cover], [solids.tray, device]].map(([geo, parent]) => {
+  // A depth-only copy of the solid (no holes) is drawn after the model and right before the hull,
+  // so the white hull only survives outside the silhouette — not seen through port openings.
+  const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false });
+  lineArt.hulls = [[solids.cover, cover], [solids.tray, device]].flatMap(([geo, parent]) => {
+    const mask = new THREE.Mesh(geo, maskMat);
     const hull = new THREE.Mesh(geo, hullMat);
-    hull.position.y = BASE;
-    hull.visible = false;
-    parent.add(hull);
-    return hull;
+    mask.renderOrder = 10;
+    hull.renderOrder = 11;
+    for (const m of [mask, hull]) { m.position.y = BASE; m.visible = false; parent.add(m); }
+    return [mask, hull];
   });
   lineArt.studioBg = scene.background;
   setLineArt(true);
