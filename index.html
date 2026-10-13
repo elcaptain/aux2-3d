@@ -38,14 +38,15 @@
   #leaders .stem { stroke: var(--blue-light); stroke-width: 1.5; }
   #leaders .pill rect { fill: var(--blue); }
   #leaders .pill text { fill: #fff; font: 700 11.5px Figtree, system-ui, sans-serif; letter-spacing: 0.05em; }
-  #leaders .glow { fill: url(#glow); animation: breathe 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  /* port glow: the four circles of the Figma "glow" layer, with its flicker-on (0 → 1 → .7 → 1 → .7) */
+  #leaders .glow-on { animation: glow-on 1.7s ease-in-out both; }
   #leaders .node { fill: #fff; stroke: var(--blue); stroke-width: 2.5; }
   #leaders .dot { fill: #fff; transition: opacity .2s; }
   #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
   #leaders g:not(.active) :is(.line, .stem, .pill, .glow, .node) { display: none; }
   #leaders g.active .dot { display: none; }
   #leaders g.hover .dot { opacity: 1 !important; }
-  @keyframes breathe { 50% { transform: scale(1.12); opacity: 0.8; } }
+  @keyframes glow-on { 0% { opacity: 0; } 11.8% { opacity: 1; } 41.2% { opacity: 0.7; } 70.6% { opacity: 1; } 100% { opacity: 0.7; } }
 
   /* ---- intro ---- */
   .intro { position: fixed; top: clamp(28px, 10vh, 120px); left: var(--pad-x); max-width: min(640px, 52vw); pointer-events: none; }
@@ -753,11 +754,16 @@ const SVG = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('leaders');
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
-svg.innerHTML = `<defs><radialGradient id="glow">
-  <stop offset="0" stop-color="#3b8cff" stop-opacity="0.9"/>
-  <stop offset="0.4" stop-color="#2f80ed" stop-opacity="0.5"/>
-  <stop offset="1" stop-color="#2f80ed" stop-opacity="0"/>
-</radialGradient></defs>`;
+// Figma "glow" layer (Connect AUX-2, node 2144:67855): four concentric blurred circles, each at 80%.
+// [file, width, height] — sizes include the blur padding baked into each SVG.
+const GLOW_CIRCLES = [
+  ['assets/glow/circle-1.svg', 195.825, 194.797],
+  ['assets/glow/circle-2.svg', 178.299, 177.444],
+  ['assets/glow/circle-3.svg', 132.773, 132.09],
+  ['assets/glow/circle-4.svg', 69.8458, 69.8458],
+];
+const GLOW_SCALE = 0.75; // the design wraps a whole device; ports are smaller
+
 const svgEl = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -793,7 +799,10 @@ for (const f of FEATURES) {
   // per feature: glow + pill label + clickable dot at every port, one leader line, end node
   const g = svgEl('g', {}, svg);
   f.ports = f.anchors.map((id) => {
-    const glow = svgEl('circle', { class: 'glow', r: 58 }, g);
+    // outer group follows the port (and fades when it turns away); inner group plays the flicker-on
+    const glow = svgEl('g', { class: 'glow' }, g);
+    const glowAnim = svgEl('g', { class: 'glow-on', transform: `scale(${GLOW_SCALE})` }, glow);
+    for (const [href, w, h] of GLOW_CIRCLES) svgEl('image', { href, width: w, height: h, x: -w / 2, y: -h / 2, opacity: 0.8 }, glowAnim);
     const stem = svgEl('line', { class: 'stem' }, g);
     const pill = svgEl('g', { class: 'pill' }, g);
     const rect = svgEl('rect', { height: 24, rx: 12 }, pill);
@@ -932,7 +941,8 @@ function updateOverlay() {
     if (isActive) active = f;
     f.proj.forEach((p, k) => {
       const port = f.ports[k];
-      for (const c of [port.dot, port.hit, port.glow, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      for (const c of [port.dot, port.hit, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
+      port.glow.setAttribute('transform', `translate(${p.x},${p.y})`);
       port.dot.style.opacity = p.vis * 0.6;
       port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
       if (isActive) {
