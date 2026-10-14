@@ -89,17 +89,6 @@
   .feature-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .feature-title { display: block; padding: 8px 0; font-weight: 500; font-size: 20px; line-height: 1.2; color: #fff; }
   .feature-desc { display: block; padding: 4px 0; font-size: 16px; line-height: 1.2; color: #aaabae; }
-  .feature-specs { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s ease; }
-  .feature.active .feature-specs { grid-template-rows: 1fr; }
-  .feature-specs > div { overflow: hidden; }
-  .feature-specs dl {
-    margin: 0 40px 24px 92px; padding-top: 14px; display: grid; gap: 8px 14px;
-    grid-template-columns: minmax(84px, 38%) 1fr; border-top: 1px solid rgba(0, 95, 190, 0.35);
-  }
-  .feature-specs dl > div { display: contents; }
-  .feature-specs dt { font-size: 13px; line-height: 1.4; color: #8b8d91; }
-  .feature-specs dd { margin: 0; font-size: 13.5px; line-height: 1.4; color: rgba(255, 255, 255, 0.9); }
-  .feature-specs .note { grid-column: 1 / -1; font-size: 12.5px; color: #8b8d91; }
 
   /* ---- tools ---- */
   .tools { position: fixed; left: var(--pad-x); bottom: 22px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -123,7 +112,6 @@
     #stage { position: sticky; top: 0; height: max(300px, 46vh); z-index: 1; }
     #leaders .line, #leaders .node { display: none !important; }
     .features { position: static; width: auto; padding: 20px 16px 48px; overflow: visible; -webkit-mask-image: none; mask-image: none; }
-    .feature-specs dl { margin-left: 22px; }
     .tools { position: absolute; left: 16px; bottom: 10px; }
     .tools .hint { display: none; }
   }
@@ -784,20 +772,12 @@ function setLineArt(on) {
 }
 
 // ---------------------------------------------------------------------------
-// Features: copy, specs, which ports they point at, and the camera view
+// Features: copy, which ports they point at, and the camera view
 // ---------------------------------------------------------------------------
 const FEATURES = [
   {
     id: 'audio', title: 'Stream audio', anchors: ['audio'], view: 'back',
     desc: 'Analogue and digital audio through one 3.5 mm jack, with optical S/PDIF built in.',
-    specs: [
-      ['DAC', 'TI PCM5122'],
-      ['Analogue', '24-bit / 48 kHz stereo, 100 dB SNR'],
-      ['Digital', '24-bit / 48 kHz stereo PCM, lossless (S/PDIF)'],
-      ['Codecs', 'FLAC, MP3 and WAV'],
-      ['Home Assistant', 'Announcements, radio, URL streams and files from your media library'],
-      ['Whole-home audio', 'Synchronized playback with Music Assistant via Sendspin'],
-    ],
   },
   {
     id: 'sensors', title: 'Connect sensors', anchors: ['grove'], view: 'back',
@@ -806,31 +786,18 @@ const FEATURES = [
   {
     id: 'serial', title: 'Serial ports', anchors: ['port1', 'port2'], view: 'back',
     desc: 'Control older devices like TVs, amplifiers and projectors over RS-232.',
-    specs: [
-      ['Connector', '2 × 3.5 mm RS-232'],
-      ['TX / RX switches', 'Swap the transmit and receive lines on each port for extra compatibility'],
-      ['Works with', 'Consumer and pro AV equipment, TVs, UPSs, climate controllers'],
-    ],
-    note: 'Some devices need a converter cable (DB9, RJ9, RJ44, Mini-DIN).',
   },
   {
     id: 'network', title: 'Extend your network', anchors: ['usba'], view: 'back',
     desc: 'Connect your ZBT-2 or ZWA-2 and place it in the optimal location for better coverage.',
-    specs: [['USB-A', 'Data, for Connect ZBT-1, ZBT-2 and ZWA-2']],
   },
   {
     id: 'wireless', title: 'Wi-Fi & Bluetooth', anchors: ['radio'], view: 'top',
     desc: 'Connect your Bluetooth devices to Home Assistant.',
-    specs: [['SoC', 'ESP32-S3'], ['Wireless', 'Wi-Fi and Bluetooth']],
   },
   {
     id: 'power', title: 'Power & Ethernet', anchors: ['usbc', 'rj45'], view: 'front',
     desc: 'A single cable with Power-over-Ethernet, or power over USB-C.',
-    specs: [
-      ['USB-C', '5 V DC, 2 A or higher'],
-      ['Power-over-Ethernet', 'IEEE 802.3af'],
-      ['Ethernet without PoE', 'Requires USB-C power'],
-    ],
   },
 ];
 
@@ -883,23 +850,13 @@ const svgEl = (tag, attrs = {}, parent) => {
 for (const f of FEATURES) {
   const li = el('li', 'feature');
   const head = el('button', 'feature-head');
-  head.setAttribute('aria-expanded', 'false');
+  head.setAttribute('aria-pressed', 'false');
   const icon = el('span', 'feature-icon');
   icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[f.id]}</svg>`;
   const text = el('span');
   text.append(el('span', 'feature-title', f.title), el('span', 'feature-desc', f.desc));
   head.append(icon, text);
   li.append(head);
-  if (f.specs || f.note) {
-    const wrap = el('div', 'feature-specs'), inner = el('div'), dl = el('dl');
-    for (const [k, v] of f.specs || []) {
-      const row = el('div');
-      row.append(el('dt', '', k), el('dd', '', v));
-      dl.append(row);
-    }
-    if (f.note) dl.append(el('dd', 'note', f.note));
-    inner.append(dl); wrap.append(inner); li.append(wrap);
-  }
   head.addEventListener('click', () => select(f.id, true));
   li.addEventListener('mouseenter', () => setHover(f.id, true));
   li.addEventListener('mouseleave', () => setHover(f.id, false));
@@ -944,16 +901,15 @@ function select(id, move) {
     const on = f.id === id;
     f.li.classList.toggle('active', on);
     f.g.classList.toggle('active', on);
-    f.head.setAttribute('aria-expanded', on);
+    f.head.setAttribute('aria-pressed', on);
     if (on) svg.append(f.g); // draw the active line on top
   }
   if (move) {
     // only turn the device if this feature's ports aren't already facing the viewer
     const f = FEATURES.find((x) => x.id === id);
     if (!f.anchors.every((a) => facing(ANCHORS[a]) > 0.5)) goTo(f.view);
-    // once the specs have expanded, make sure the whole item is visible in the list
-    const li = FEATURES.find((f) => f.id === id).li;
-    if (isWide) setTimeout(() => li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 400);
+    // make sure the selected card is visible in the list
+    if (isWide) f.li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
 
