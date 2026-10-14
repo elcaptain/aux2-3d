@@ -847,6 +847,8 @@ const GLOW_SCALE = 0.75; // the design wraps a whole device; ports are smaller
 // Figma "Plus" (Connect AUX-2, node 2379:3805): 24px #005FBE circle, 50% white ring, white plus.
 // The SVG is 28 × 27.44 including the 2px ring.
 const ICON = { href: 'assets/icons/plus.svg', w: 28, h: 27.44, gap: 18 }; // gap: px from port edge to icon centre
+// Selected state (node 2379:3809): white circle, blue minus, wide 50% white halo — 64 × 63.44 incl. halo.
+const ICON_SELECTED = { href: 'assets/icons/selected.svg', w: 64, h: 63.44 };
 
 const svgEl = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(SVG, tag);
@@ -887,7 +889,8 @@ for (const f of FEATURES) {
   const path = svgEl('path', { class: 'line' }, g);
   // indicator icons + card node sit on top of the line
   f.ports.forEach((port) => {
-    port.icon = svgEl('image', { class: 'icon', href: ICON.href, width: ICON.w, height: ICON.h }, g);
+    port.icon = svgEl('image', { class: 'icon' }, g);
+    setIcon(port, ICON);
     port.hit = svgEl('circle', { class: 'hit', r: 16 }, g);
     port.hit.addEventListener('click', () => select(f.id, true));
     port.hit.addEventListener('mouseenter', () => setHover(f.id, true));
@@ -895,6 +898,13 @@ for (const f of FEATURES) {
   });
   f.endNode = svgEl('circle', { class: 'node', r: 5 }, g);
   Object.assign(f, { li, head, g, path, titleEl: li.querySelector('.feature-title') });
+}
+
+function setIcon(port, icon) {
+  port.ic = icon;
+  port.icon.setAttribute('href', icon.href);
+  port.icon.setAttribute('width', icon.w);
+  port.icon.setAttribute('height', icon.h);
 }
 
 function setHover(id, on) {
@@ -911,6 +921,7 @@ function select(id, move) {
     f.li.classList.toggle('active', on);
     f.g.classList.toggle('active', on);
     f.head.setAttribute('aria-pressed', on);
+    for (const port of f.ports) setIcon(port, on ? ICON_SELECTED : ICON);
     if (on) svg.append(f.g); // draw the active line on top
   }
   if (move) {
@@ -1022,7 +1033,7 @@ function updateOverlay() {
     f.proj.forEach((p, k) => {
       const port = f.ports[k];
       port.hit.setAttribute('cx', p.x); port.hit.setAttribute('cy', p.y);
-      port.icon.setAttribute('x', p.x - ICON.w / 2); port.icon.setAttribute('y', p.y - ICON.h / 2);
+      port.icon.setAttribute('x', p.x - port.ic.w / 2); port.icon.setAttribute('y', p.y - port.ic.h / 2);
       port.icon.style.opacity = p.vis;
       port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
       const c = p.port;
