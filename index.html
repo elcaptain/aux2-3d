@@ -41,11 +41,11 @@
   /* port glow: the four circles of the Figma "glow" layer, with its flicker-on (0 → 1 → .7 → 1 → .7) */
   #leaders .glow-on { animation: glow-on 1.7s ease-in-out both; }
   #leaders .node { fill: #fff; stroke: var(--blue); stroke-width: 2.5; }
-  #leaders .dot { fill: #fff; transition: opacity .2s; }
+  /* port indicator: Figma "Plus" icon (node 2379:3805), placed just below each port */
+  #leaders .icon { transform-box: fill-box; transform-origin: center; transition: transform .15s; }
+  #leaders g.hover .icon { transform: scale(1.15); }
   #leaders .hit { fill: transparent; pointer-events: auto; cursor: pointer; }
   #leaders g:not(.active) :is(.line, .stem, .pill, .glow, .node) { display: none; }
-  #leaders g.active .dot { display: none; }
-  #leaders g.hover .dot { opacity: 1 !important; }
   @keyframes glow-on { 0% { opacity: 0; } 11.8% { opacity: 1; } 41.2% { opacity: 0.7; } 70.6% { opacity: 1; } 100% { opacity: 0.7; } }
 
   /* ---- intro ---- */
@@ -814,10 +814,14 @@ const PORT_LABELS = { audio: 'Audio', grove: 'Grove', port1: 'Port 1', port2: 'P
 
 // 3D anchor points (just proud of each port) + outward normals for visibility
 const ANCHORS = {};
+// half the opening height (mm): the indicator icon sits just below the port, not on it
+const PORT_HALF = { reset: 1, usbc: 1.7, rj45: 6.6, usba: 3, port1: 3.1, port2: 3.1, grove: 2.8, audio: 3.1 };
 for (const p of PORTS) {
   if (!p.id) continue;
   const o = faceTransform(new THREE.Object3D(), p.face, p.d, p.top, 0.4);
-  ANCHORS[p.id] = { pos: o.position.clone(), normal: new THREE.Vector3(0, 0, p.face === 'front' ? 1 : -1) };
+  const below = o.position.clone();
+  below.y -= PORT_HALF[p.id] ?? 0;
+  ANCHORS[p.id] = { pos: o.position.clone(), below, normal: new THREE.Vector3(0, 0, p.face === 'front' ? 1 : -1) };
 }
 // above the Wi-Fi/Bluetooth shield on the board
 ANCHORS.radio = { pos: new THREE.Vector3(photoX(1365), BASE + H + 0.05, photoZ(1033)), normal: new THREE.Vector3(0, 1, 0) };
@@ -839,6 +843,10 @@ const GLOW_CIRCLES = [
   ['assets/glow/circle-4.svg', 69.8458, 69.8458],
 ];
 const GLOW_SCALE = 0.75; // the design wraps a whole device; ports are smaller
+
+// Figma "Plus" (Connect AUX-2, node 2379:3805): 24px #005FBE circle, 50% white ring, white plus.
+// The SVG is 28 × 27.44 including the 2px ring.
+const ICON = { href: 'assets/icons/plus.svg', w: 28, h: 27.44, gap: 18 }; // gap: px from port edge to icon centre
 
 const svgEl = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(SVG, tag);
@@ -862,7 +870,7 @@ for (const f of FEATURES) {
   li.addEventListener('mouseleave', () => setHover(f.id, false));
   list.append(li);
 
-  // per feature: glow + pill label + clickable dot at every port, one leader line, end node
+  // per feature: glow + pill label at every port, one leader line, indicator icon (click target), end node
   const g = svgEl('g', {}, svg);
   f.ports = f.anchors.map((id) => {
     // outer group follows the port (and fades when it turns away); inner group plays the flicker-on
@@ -874,16 +882,17 @@ for (const f of FEATURES) {
     const rect = svgEl('rect', { height: 24, rx: 12 }, pill);
     const label = svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 12 }, pill);
     label.textContent = PORT_LABELS[id].toUpperCase();
-    const dot = svgEl('circle', { class: 'dot', r: 3.5 }, g);
-    const hit = svgEl('circle', { class: 'hit', r: 14 }, g);
-    hit.addEventListener('click', () => select(f.id, true));
-    hit.addEventListener('mouseenter', () => setHover(f.id, true));
-    hit.addEventListener('mouseleave', () => setHover(f.id, false));
-    return { glow, stem, pill, rect, label, dot, hit, w: 0 };
+    return { glow, stem, pill, rect, label, w: 0 };
   });
   const path = svgEl('path', { class: 'line' }, g);
-  // port nodes + card node sit on top of the line
-  f.nodes = f.anchors.map(() => svgEl('circle', { class: 'node', r: 3.5 }, g));
+  // indicator icons + card node sit on top of the line
+  f.ports.forEach((port) => {
+    port.icon = svgEl('image', { class: 'icon', href: ICON.href, width: ICON.w, height: ICON.h }, g);
+    port.hit = svgEl('circle', { class: 'hit', r: 16 }, g);
+    port.hit.addEventListener('click', () => select(f.id, true));
+    port.hit.addEventListener('mouseenter', () => setHover(f.id, true));
+    port.hit.addEventListener('mouseleave', () => setHover(f.id, false));
+  });
   f.endNode = svgEl('circle', { class: 'node', r: 5 }, g);
   Object.assign(f, { li, head, g, path, titleEl: li.querySelector('.feature-title') });
 }
@@ -1001,26 +1010,34 @@ function updateOverlay() {
   const all = [];
   let active = null;
   for (const f of FEATURES) {
-    f.proj = f.anchors.map((id) => ({ ...toScreen(ANCHORS[id].pos), vis: facing(ANCHORS[id]) }));
+    f.proj = f.anchors.map((id) => {
+      const a = ANCHORS[id];
+      const port = toScreen(a.pos);
+      // icon: just below the port's bottom edge on screen (on the anchor itself for the lid marker)
+      const edge = a.below ? toScreen(a.below) : port;
+      return { port, x: edge.x, y: edge.y + (a.below ? ICON.gap : 0), vis: facing(a) };
+    });
     const isActive = f.id === activeId;
     if (isActive) active = f;
     f.proj.forEach((p, k) => {
       const port = f.ports[k];
-      for (const c of [port.dot, port.hit, f.nodes[k]]) { c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); }
-      port.glow.setAttribute('transform', `translate(${p.x},${p.y})`);
-      port.dot.style.opacity = p.vis * 0.6;
+      port.hit.setAttribute('cx', p.x); port.hit.setAttribute('cy', p.y);
+      port.icon.setAttribute('x', p.x - ICON.w / 2); port.icon.setAttribute('y', p.y - ICON.h / 2);
+      port.icon.style.opacity = p.vis;
       port.hit.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
+      const c = p.port;
+      port.glow.setAttribute('transform', `translate(${c.x},${c.y})`);
       if (isActive) {
         // pill label on a thin stem above the port; stagger neighbours so they don't overlap
         if (!port.w) port.w = port.label.getComputedTextLength() + 26;
         const h = 46 + (k % 2) * 34;
-        const top = p.y - h;
-        port.stem.setAttribute('x1', p.x); port.stem.setAttribute('x2', p.x);
-        port.stem.setAttribute('y1', p.y); port.stem.setAttribute('y2', top);
+        const top = c.y - h;
+        port.stem.setAttribute('x1', c.x); port.stem.setAttribute('x2', c.x);
+        port.stem.setAttribute('y1', c.y); port.stem.setAttribute('y2', top);
         port.rect.setAttribute('width', port.w);
         port.rect.setAttribute('x', -port.w / 2);
-        port.pill.setAttribute('transform', `translate(${p.x},${top - 24})`);
-        for (const e of [port.stem, port.pill, port.glow, f.nodes[k]]) e.style.opacity = p.vis;
+        port.pill.setAttribute('transform', `translate(${c.x},${top - 24})`);
+        for (const e of [port.stem, port.pill, port.glow]) e.style.opacity = p.vis;
       }
       all.push(p);
     });
